@@ -22,7 +22,7 @@ AI-powered text rewriting through macOS contextual menu integration.
 
 ```bash
 # Clone the repository
-git clone https://github.com/mokbhai/VOX.git
+git clone https://github.com/mokbhai/vox.git
 cd vox
 
 # Install dependencies with uv

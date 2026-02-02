@@ -34,7 +34,7 @@ dev: sync
 # Flush services cache (required after service changes)
 flush:
 	killall cfprefsd 2>/dev/null || true
-	/sbin/pbs -flush
+	/usr/bin/pbs -flush
 
 # Run tests
 test: sync

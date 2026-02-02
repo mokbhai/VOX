@@ -12,7 +12,11 @@ dependencies = [
     "keyring>=24.0",
 ]
 
-[project.optional-dependencies]
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "py2app>=0.28"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -20,20 +24,8 @@ dev = [
     "mypy>=1.0.0",
 ]
 
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [tool.setuptools]
 packages = ["vox"]
-
-[tool.uv]
-dev-dependencies = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
-]
 
 [tool.ruff]
 line-length = 100
