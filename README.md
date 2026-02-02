@@ -1,108 +1,47 @@
 # Vox
 
-AI-powered text rewriting through macOS contextual menu integration.
+AI-powered text rewriting directly in your macOS apps. Select text, right-click, and rewrite instantly.
+
+## What is Vox?
+
+Vox integrates with macOS to add AI text rewriting to your contextual menu. Works in any app - Safari, Notes, Mail, Messages, and more. Just select text and choose how to rewrite it.
+
+## Context Menu Options
+
+When you right-click selected text, you'll see these options under "Rewrite with Vox":
+
+- **Fix Grammar** - Correct spelling, grammar, and punctuation
+- **Professional** - Make text formal and business-appropriate
+- **Concise** - Shorten text while preserving meaning
+- **Friendly** - Make tone warm and casual
+
+The rewritten text replaces your selection instantly. Press Cmd+Z in the host app to undo if needed.
 
 ## Features
 
-- **Contextual Menu Integration**: Right-click selected text in any app to rewrite
-- **Four Rewrite Presets**: Fix Grammar, Professional, Concise, Friendly
-- **In-place Replacement**: Text is replaced directly and can be undone (Cmd+Z)
-- **Language Detection**: Works with multiple languages, not just English
-- **Menu Bar App**: Quick access to settings and configuration
-- **Secure Storage**: API key stored in macOS Keychain
+- Works in any macOS app with text selection
+- In-place text replacement (undo with Cmd+Z)
+- Menu bar icon for quick settings access
+- API key stored securely in macOS Keychain
+- Supports multiple languages
 
 ## Installation
 
-### Prerequisites
-
-- macOS 12.0+
-- [uv](https://github.com/astral-sh/uv) (Python package installer)
-
-### Build from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/mokbhai/vox.git
-cd vox
-
-# Install dependencies with uv
-uv sync
-
-# Build the .app bundle
-make build
-
-# Install to /Applications
-cp -R dist/Vox.app /Applications/
-
-# Flush the services cache
-make flush
-
-cd ..
-```
-
-### First Run
-
-1. Launch Vox from /Applications
-2. Click the "V" icon in the menu bar
-3. Select "Set API Key..." and enter your OpenAI API key
-4. Optionally change the model in "Model" settings
-
-## Usage
-
-1. Select text in any application (Safari, Notes, Mail, Messages, etc.)
-2. Right-click to open the contextual menu
-3. Navigate to "Rewrite with Vox" and choose a preset:
-   - **Fix Grammar**: Correct spelling, grammar, and punctuation
-   - **Professional**: Make text formal and business-appropriate
-   - **Concise**: Shorten text while preserving meaning
-   - **Friendly**: Make tone warm and casual
-4. The text will be replaced with the rewritten version
-5. Press Cmd+Z in the host app to undo if needed
+1. Build the app using `make build`
+2. Copy `dist/Vox.app` to /Applications
+3. Run `make flush` to refresh services cache
+4. Launch Vox from /Applications
+5. Click the "V" menu bar icon and enter your OpenAI API key
 
 ## Configuration
 
-Settings are accessible from the menu bar:
+Access settings from the menu bar icon:
 
-- **Set API Key**: Enter or update your OpenAI API key
-- **Model**: Choose between gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
-- **Open at Login**: Toggle auto-start at login
-
-Configuration is stored in:
-- `~/Library/Application Support/Vox/config.yml`
-- macOS Keychain (for API key)
-
-## Development
-
-```bash
-# Install/sync dependencies
-uv sync
-
-# Run in development mode
-make dev
-
-# Run tests
-make test
-
-# Lint code
-make lint
-
-# Format code
-make fmt
-
-# Build for distribution
-make build
-
-# Clean build artifacts
-make clean
-```
+- API Key - Your OpenAI API key
+- Model - Choose gpt-4o, gpt-4o-mini, or others
+- Base URL - Custom API endpoint (optional)
+- Launch at Login - Auto-start on system boot
 
 ## Requirements
 
-See `pyproject.toml` for full dependency list:
-- PyObjC for macOS native API integration
-- OpenAI Python SDK for text processing
-- py2app for creating .app bundles
-
-## License
-
-MIT License
+macOS 12.0 or later

@@ -186,12 +186,22 @@ class ServiceProvider(AppKit.NSObject):
 
     def register_services(self):
         """Register the services with macOS."""
-        # This is handled by the Info.plist entries
+        # Register the service provider with Distributed Objects (DO)
+        # The port name must match NSPortName in Info.plist
+        connection = Foundation.NSConnection.defaultConnection()
+        connection.setRootObject_(self)
+        registered = connection.registerName_("Vox")
+
+        import sys
+        print(f"DEBUG: NSConnection registered='Vox': {registered}", flush=True)
+        print(f"DEBUG: Connection root object: {connection.rootObject()}", flush=True)
+
         # Trigger a refresh of services via subprocess
         import subprocess
         try:
-            subprocess.run(["/System/Library/CoreServices/pbs", "-flush"],
-                         check=False, capture_output=True)
+            result = subprocess.run(["/System/Library/CoreServices/pbs", "-flush"],
+                         check=False, capture_output=True, text=True)
+            print(f"DEBUG: pbs -flush output: {result.stderr}", flush=True)
         except FileNotFoundError:
             pass  # pbs command not available
 
