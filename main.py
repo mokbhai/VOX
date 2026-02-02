@@ -20,8 +20,7 @@ def main():
     service_provider = ServiceProvider()
 
     # Initialize and start the menu bar app
-    menu_bar_app = MenuBarApp.alloc().init()
-    menu_bar_app.setupWithService_(service_provider)
+    menu_bar_app = MenuBarApp(service_provider)
 
     # Run the application
     menu_bar_app.run()

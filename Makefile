@@ -14,7 +14,8 @@ sync:
 	uv sync
 
 # Build the .app bundle
-build: sync
+build:
+	rm -rf $(BUILD_DIR) $(DIST_DIR)
 	uv run pyinstaller vox.spec
 	@if [ -d "$(DIST_DIR)/$(APP_NAME).app" ]; then \
 		echo "Build successful: $(DIST_DIR)/$(APP_NAME).app"; \
