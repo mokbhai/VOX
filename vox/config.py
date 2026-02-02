@@ -8,12 +8,7 @@ import os
 import yaml
 from pathlib import Path
 from typing import Optional
-import keyring
 
-
-# Keychain configuration
-KEYRING_SERVICE_NAME = "com.voxapp.rewrite"
-KEYRING_API_KEY_ITEM = "openai_api_key"
 
 # Default configuration values
 DEFAULT_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
@@ -115,56 +110,28 @@ class Config:
         self._config["toast_position"] = value
         self.save()
 
-    # API Key Management via Keychain
+    # API Key Management via config file
 
     def get_api_key(self) -> Optional[str]:
-        """
-        Retrieve the OpenAI API key from the Keychain.
-
-        Returns:
-            The API key if found, None otherwise.
-        """
-        try:
-            key = keyring.get_password(KEYRING_SERVICE_NAME, KEYRING_API_KEY_ITEM)
-            return key
-        except Exception as e:
-            print(f"Error retrieving API key from keychain: {e}")
-            return None
+        """Retrieve the OpenAI API key from config."""
+        return self._config.get("api_key")
 
     def set_api_key(self, api_key: str) -> bool:
-        """
-        Store the OpenAI API key in the Keychain.
-
-        Args:
-            api_key: The OpenAI API key to store.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        try:
-            keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_API_KEY_ITEM, api_key)
-            return True
-        except Exception as e:
-            print(f"Error storing API key in keychain: {e}")
-            return False
+        """Store the OpenAI API key in config."""
+        self._config["api_key"] = api_key
+        self.save()
+        return True
 
     def delete_api_key(self) -> bool:
-        """
-        Delete the OpenAI API key from the Keychain.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        try:
-            keyring.delete_password(KEYRING_SERVICE_NAME, KEYRING_API_KEY_ITEM)
-            return True
-        except Exception as e:
-            print(f"Error deleting API key from keychain: {e}")
-            return False
+        """Delete the OpenAI API key from config."""
+        self._config.pop("api_key", None)
+        self.save()
+        return True
 
     def has_api_key(self) -> bool:
         """Check if an API key is configured."""
-        return self.get_api_key() is not None
+        key = self.get_api_key()
+        return key is not None and len(key) > 0
 
     # Auto-start Launch Agent management
 
