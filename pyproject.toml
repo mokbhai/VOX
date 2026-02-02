@@ -6,37 +6,19 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pyobjc-core>=10.0",
-    "pyobjc-framework-AVKit>=10.0",
-    "pyobjc-framework-Accounts>=10.0",
-    "pyobjc-framework-AdSupport>=10.0",
-    "pyobjc-framework-AddressBook>=10.0",
-    "pyobjc-framework-AppKit>=10.0",
-    "pyobjc-framework-ApplicationServices>=10.0",
-    "pyobjc-framework-AudioVideoBridging>=10.0",
-    "pyobjc-framework-AutomaticAssessmentConfiguration>=10.0",
-    "pyobjc-framework-Automator>=10.0",
-    "pyobjc-framework-BusinessChat>=10.0",
-    "pyobjc-framework-CalendarStore>=10.0",
-    "pyobjc-framework-CFNetwork>=10.0",
-    "pyobjc-framework-Calculator>=10.0",
     "pyobjc-framework-Cocoa>=10.0",
-    "pyobjc-framework-Collaboration>=10.0",
-    "pyobjc-framework-CoreAudio>=10.0",
-    "pyobjc-framework-CoreAudioKit>=10.0",
-    "pyobjc-framework-CoreBluetooth>=10.0",
-    "pyobjc-framework-CoreData>=10.0",
-    "pyobjc-framework-CoreLocation>=10.0",
-    "pyobjc-framework-CoreMedia>=10.0",
-    "pyobjc-framework-CoreMediaIO>=10.0",
-    "pyobjc-framework-CoreML>=10.0",
-    "pyobjc-framework-CoreMotion>=10.0",
-    "pyobjc-framework-CoreServices>=10.0",
-    "pyobjc-framework-CoreSpotlight>=10.0",
-    "pyobjc-framework-CoreText>=10.0",
-    "pyobjc-framework-CoreWLAN>=10.0",
+    "pyobjc-framework-AppKit>=10.0",
     "openai>=1.0.0",
     "pyyaml>=6.0",
     "keyring>=24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
 ]
 
 [build-system]
@@ -46,18 +28,17 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["vox"]
 
-[tool.py2app]
-app = ["main.py"]
-options = {
-    "py2app": {
-        "plist": {
-            "CFBundleName": "Vox",
-            "CFBundleDisplayName": "Vox",
-            "CFBundleIdentifier": "com.voxapp.rewrite",
-            "CFBundleVersion": "0.1.0",
-            "CFBundleShortVersionString": "0.1.0",
-            "NSHighResolutionCapable": True,
-            "LSUIElement": True,
-        }
-    }
-}
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"

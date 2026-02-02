@@ -16,7 +16,7 @@ AI-powered text rewriting through macOS contextual menu integration.
 ### Prerequisites
 
 - macOS 12.0+
-- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (Python package installer)
 
 ### Build from Source
 
@@ -25,18 +25,17 @@ AI-powered text rewriting through macOS contextual menu integration.
 git clone https://github.com/yourusername/vox.git
 cd vox
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies with uv
+uv sync
 
 # Build the .app bundle
-python setup.py py2app
+make build
 
 # Install to /Applications
 cp -R dist/Vox.app /Applications/
 
 # Flush the services cache
-killall cfprefsd
-/sbin/pbs -flush
+make flush
 ```
 
 ### First Run
@@ -73,6 +72,9 @@ Configuration is stored in:
 ## Development
 
 ```bash
+# Install/sync dependencies
+uv sync
+
 # Run in development mode
 make dev
 
@@ -81,6 +83,9 @@ make test
 
 # Lint code
 make lint
+
+# Format code
+make fmt
 
 # Build for distribution
 make build
@@ -91,6 +96,7 @@ make clean
 
 ## Requirements
 
+See `pyproject.toml` for full dependency list:
 - PyObjC for macOS native API integration
 - OpenAI Python SDK for text processing
 - py2app for creating .app bundles
@@ -98,4 +104,3 @@ make clean
 ## License
 
 MIT License
-# VOX

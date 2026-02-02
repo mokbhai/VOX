@@ -45,12 +45,4 @@ setup(
     data_files=DATA_FILES,
     options={"py2app": OPTIONS["py2app"]},
     setup_requires=["py2app"],
-    install_requires=[
-        "pyobjc-core>=10.0",
-        "pyobjc-framework-Cocoa>=10.0",
-        "pyobjc-framework-AppKit>=10.0",
-        "openai>=1.0.0",
-        "pyyaml>=6.0",
-        "keyring>=24.0",
-    ],
 )
