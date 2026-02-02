@@ -14,65 +14,61 @@ from typing import Optional
 class ToastWindow(AppKit.NSWindow):
     """A small toast popup window that appears near the cursor."""
 
-    _instance: Optional["ToastWindow"] = None
+    _instance = None
+    _text_field = objc.ivar()
 
-    def __init__(self):
-        """Initialize the toast window."""
-        # Get the screen frame for positioning
-        screen = AppKit.NSScreen.mainScreen()
-        screen_frame = screen.visibleFrame()
-
-        # Create a small panel window
+    @classmethod
+    def create(cls):
+        """Create and initialize the toast window."""
         frame = Foundation.NSMakeRect(0, 0, 200, 50)
-
-        super().__init__(
+        window = cls.alloc().initWithContentRect_styleMask_backing_defer_(
             frame,
             AppKit.NSWindowStyleMaskBorderless,
             AppKit.NSBackingStoreBuffered,
             False,
         )
+        if window is None:
+            return None
 
         # Configure appearance
-        self.setTitle_("Vox")
-        self.setOpaque_(False)
-        self.setBackgroundColor_(AppKit.NSColor.colorWithDeviceWhite_alpha_(0.2, 0.9))
-        self.setLevel_(AppKit.NSFloatingWindowLevel)
+        window.setTitle_("Vox")
+        window.setOpaque_(False)
+        window.setBackgroundColor_(AppKit.NSColor.colorWithDeviceWhite_alpha_(0.2, 0.9))
+        window.setLevel_(AppKit.NSFloatingWindowLevel)
 
         # Create text field
         text_frame = Foundation.NSMakeRect(10, 10, 180, 30)
-        self._text_field = AppKit.NSTextField.alloc().initWithFrame_(text_frame)
-        self._text_field.setStringValue_("Rewriting with Vox...")
-        self._text_field.setBezeled_(False)
-        self._text_field.setDrawsBackground_(False)
-        self._text_field.setEditable_(False)
-        self._text_field.setSelectable_(False)
-        self._text_field.setTextColor_(AppKit.NSColor.whiteColor())
-        self._text_field.setAlignment_(AppKit.NSTextAlignmentCenter)
-        self._text_field.setFont_(AppKit.NSFont.systemFontOfSize_(13))
+        window._text_field = AppKit.NSTextField.alloc().initWithFrame_(text_frame)
+        window._text_field.setStringValue_("Rewriting with Vox...")
+        window._text_field.setBezeled_(False)
+        window._text_field.setDrawsBackground_(False)
+        window._text_field.setEditable_(False)
+        window._text_field.setSelectable_(False)
+        window._text_field.setTextColor_(AppKit.NSColor.whiteColor())
+        window._text_field.setAlignment_(AppKit.NSTextAlignmentCenter)
+        window._text_field.setFont_(AppKit.NSFont.systemFontOfSize_(13))
 
         # Add text field to window
-        self.setContentView_(AppKit.NSView.alloc().initWithFrame_(frame))
-        self.contentView().addSubview_(self._text_field)
+        content = AppKit.NSView.alloc().initWithFrame_(frame)
+        window.setContentView_(content)
+        window.contentView().addSubview_(window._text_field)
 
         # Round corners
-        mask = self.contentView().wantsLayer()
-        if mask:
-            layer = self.contentView().layer()
+        window.contentView().setWantsLayer_(True)
+        layer = window.contentView().layer()
+        if layer:
             layer.setCornerRadius_(10)
+
+        return window
 
     def show_at_cursor(self):
         """Show the toast window near the mouse cursor."""
-        # Get mouse location
         mouse_location = AppKit.NSEvent.mouseLocation()
-
-        # Calculate window position (above and to the right of cursor)
-        window_width = self.frame().size.width
         window_height = self.frame().size.height
 
         x = mouse_location.x + 15
         y = mouse_location.y - window_height - 15
 
-        # Position the window
         self.setFrameTopLeftPoint_(Foundation.NSMakePoint(x, y))
         self.makeKeyAndOrderFront_(None)
         self.orderFrontRegardless()
@@ -82,10 +78,10 @@ class ToastWindow(AppKit.NSWindow):
         self.orderOut_(None)
 
     @classmethod
-    def get_instance(cls) -> "ToastWindow":
+    def get_instance(cls):
         """Get the singleton toast window instance."""
         if cls._instance is None:
-            cls._instance = cls()
+            cls._instance = cls.create()
         return cls._instance
 
 

@@ -4,8 +4,9 @@ macOS Services API integration for Vox.
 Handles text processing requests from the contextual menu
 using the NSServices mechanism via PyObjC.
 """
+import sys
+import objc
 import AppKit
-import Foundation
 from PyObjCTools import AppHelper
 from typing import Optional
 
@@ -53,102 +54,83 @@ class ServiceProvider(AppKit.NSObject):
         self._api_client = None
 
     # Service methods - these are called by macOS when the service is invoked
+    # Signature: (void)name:(NSPasteboard*)pboard userData:(NSString*)userData error:(NSString**)error
 
-    def fixGrammarService_userData_error_(self, pasteboard: AppKit.NSPasteboard, userData: str, error: list) -> bool:
-        """
-        Handle the 'Fix Grammar' service invocation.
+    @objc.typedSelector(b"v@:@@o^@")
+    def fixGrammarService_userData_error_(self, pasteboard, userData, error):
+        print("SERVICE CALLED: fixGrammarService", flush=True)
+        self._handle_service(pasteboard, RewriteMode.FIX_GRAMMAR)
 
-        Args:
-            pasteboard: The pasteboard containing the selected text.
-            userData: Additional data (unused).
-            error: Error list to populate if an error occurs.
+    @objc.typedSelector(b"v@:@@o^@")
+    def professionalService_userData_error_(self, pasteboard, userData, error):
+        print("SERVICE CALLED: professionalService", flush=True)
+        self._handle_service(pasteboard, RewriteMode.PROFESSIONAL)
 
-        Returns:
-            True if successful, False otherwise.
-        """
-        return self._handle_service(pasteboard, RewriteMode.FIX_GRAMMAR, error)
+    @objc.typedSelector(b"v@:@@o^@")
+    def conciseService_userData_error_(self, pasteboard, userData, error):
+        print("SERVICE CALLED: conciseService", flush=True)
+        self._handle_service(pasteboard, RewriteMode.CONCISE)
 
-    def professionalService_userData_error_(self, pasteboard: AppKit.NSPasteboard, userData: str, error: list) -> bool:
-        """Handle the 'Professional' service invocation."""
-        return self._handle_service(pasteboard, RewriteMode.PROFESSIONAL, error)
+    @objc.typedSelector(b"v@:@@o^@")
+    def friendlyService_userData_error_(self, pasteboard, userData, error):
+        print("SERVICE CALLED: friendlyService", flush=True)
+        self._handle_service(pasteboard, RewriteMode.FRIENDLY)
 
-    def conciseService_userData_error_(self, pasteboard: AppKit.NSPasteboard, userData: str, error: list) -> bool:
-        """Handle the 'Concise' service invocation."""
-        return self._handle_service(pasteboard, RewriteMode.CONCISE, error)
-
-    def friendlyService_userData_error_(self, pasteboard: AppKit.NSPasteboard, userData: str, error: list) -> bool:
-        """Handle the 'Friendly' service invocation."""
-        return self._handle_service(pasteboard, RewriteMode.FRIENDLY, error)
-
-    def _handle_service(self, pasteboard: AppKit.NSPasteboard, mode: RewriteMode, error: list) -> bool:
-        """
-        Handle a service invocation for any mode.
-
-        Args:
-            pasteboard: The pasteboard containing the selected text.
-            mode: The rewrite mode to apply.
-            error: Error list to populate if an error occurs.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        # Get API client
-        api_client = self._get_api_client()
-        if api_client is None:
-            ErrorNotifier.show_api_key_error()
-            error.append(AppKit.NS_ERROR_NOT_SUPPORTED)
-            return False
-
-        # Read text from pasteboard
-        text = self._read_text_from_pasteboard(pasteboard)
-        if not text:
-            error.append(AppKit.NS_ERROR_NOT_SUPPORTED)
-            return False
-
-        # Show loading toast
-        mode_name = RewriteAPI.get_display_name(mode)
-        self._toast_manager.show(f"{mode_name} with Vox...")
-
+    def _handle_service(self, pasteboard, mode):
+        """Handle a service invocation for any mode."""
+        print(f"DEBUG _handle_service: mode={mode}", flush=True)
         try:
+            # Get API client
+            api_client = self._get_api_client()
+            print(f"DEBUG: api_client={api_client}", flush=True)
+            if api_client is None:
+                ErrorNotifier.show_api_key_error()
+                return
+
+            # Read text from pasteboard
+            text = self._read_text_from_pasteboard(pasteboard)
+            print(f"DEBUG: text={text!r}", flush=True)
+            if not text:
+                return
+
+            # Show loading toast
+            mode_name = RewriteAPI.get_display_name(mode)
+            self._toast_manager.show(f"{mode_name} with Vox...")
+
             # Process the text
+            print("DEBUG: calling API...", flush=True)
             result = api_client.rewrite(text, mode)
+            print(f"DEBUG: API result={result!r}", flush=True)
 
             # Write result back to pasteboard
             self._write_text_to_pasteboard(pasteboard, result)
+            print("DEBUG: wrote to pasteboard, done!", flush=True)
 
             # Hide toast
             self._toast_manager.hide()
-            return True
 
         except APIKeyError:
             ErrorNotifier.show_invalid_key_error()
             self._toast_manager.hide()
-            error.append(AppKit.NS_ERROR_NOT_SUPPORTED)
-            return False
 
         except NetworkError:
             ErrorNotifier.show_network_error()
             self._toast_manager.hide()
-            error.append(AppKit.NS_ERROR_NOT_SUPPORTED)
-            return False
 
         except RateLimitError:
             ErrorNotifier.show_rate_limit_error()
             self._toast_manager.hide()
-            error.append(AppKit.NS_ERROR_NOT_SUPPORTED)
-            return False
 
         except RewriteError as e:
             ErrorNotifier.show_generic_error(str(e))
             self._toast_manager.hide()
-            error.append(AppKit.NS_ERROR_NOT_SUPPORTED)
-            return False
 
         except Exception as e:
+            print(f"DEBUG: EXCEPTION: {type(e).__name__}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             ErrorNotifier.show_generic_error(f"Unexpected error: {e}")
             self._toast_manager.hide()
-            error.append(AppKit.NS_ERROR_NOT_SUPPORTED)
-            return False
 
     def _read_text_from_pasteboard(self, pasteboard: AppKit.NSPasteboard) -> Optional[str]:
         """
@@ -177,33 +159,16 @@ class ServiceProvider(AppKit.NSObject):
             pasteboard: The pasteboard to write to.
             text: The text to write.
         """
-        # Clear the pasteboard and declare new types
         pasteboard.clearContents()
-        pasteboard.declareTypes_owner_([AppKit.NSStringPboardType], None)
-
-        # Write the text
-        pasteboard.setString_forType_(text, AppKit.NSStringPboardType)
+        pasteboard.setString_forType_(text, AppKit.NSPasteboardTypeString)
 
     def register_services(self):
         """Register the services with macOS."""
-        # Register the service provider with Distributed Objects (DO)
-        # The port name must match NSPortName in Info.plist
-        connection = Foundation.NSConnection.defaultConnection()
-        connection.setRootObject_(self)
-        registered = connection.registerName_("Vox")
-
-        import sys
-        print(f"DEBUG: NSConnection registered='Vox': {registered}", flush=True)
-        print(f"DEBUG: Connection root object: {connection.rootObject()}", flush=True)
-
-        # Trigger a refresh of services via subprocess
-        import subprocess
-        try:
-            result = subprocess.run(["/System/Library/CoreServices/pbs", "-flush"],
-                         check=False, capture_output=True, text=True)
-            print(f"DEBUG: pbs -flush output: {result.stderr}", flush=True)
-        except FileNotFoundError:
-            pass  # pbs command not available
+        print(f"DEBUG register_services: self={self}", flush=True)
+        AppKit.NSApp.setServicesProvider_(self)
+        print(f"DEBUG register_services: provider set, NSApp={AppKit.NSApp}", flush=True)
+        # Verify methods exist
+        print(f"DEBUG: has fixGrammarService = {self.respondsToSelector_('fixGrammarService:userData:error:')}", flush=True)
 
     def update_api_key(self):
         """Update the API client when the API key changes."""
@@ -212,6 +177,3 @@ class ServiceProvider(AppKit.NSObject):
     def update_model(self):
         """Update the API client when the model changes."""
         self._reset_api_client()
-
-
-import objc
