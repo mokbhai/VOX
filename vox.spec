@@ -62,7 +62,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='Vox.app',
-    icon=None,
+    icon='assets/logo.icns',
     bundle_identifier='com.voxapp.rewrite',
     info_plist={
         'CFBundleName': 'Vox',

@@ -5,6 +5,7 @@ description = "AI-powered text rewriting through macOS contextual menu"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "cairosvg>=2.8.2",
     "openai>=2.16.0",
     "pyinstaller>=6.18.0",
     "pyobjc-core>=12.1",

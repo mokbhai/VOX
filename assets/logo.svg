@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Gradient for the main shape -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+    <!-- Gradient for the accent -->
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f472b6"/>
+      <stop offset="100%" style="stop-color:#ec4899"/>
+    </linearGradient>
+    <!-- Shadow filter -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="32" y="32" width="448" height="448" rx="96" ry="96" fill="url(#bgGradient)" filter="url(#shadow)"/>
+
+  <!-- Stylized "V" letterform representing transformation -->
+  <g transform="translate(256, 256)">
+    <!-- Left stroke of V with text lines -->
+    <path d="M-100 -80 L-20 100" stroke="white" stroke-width="32" stroke-linecap="round" fill="none" opacity="0.9"/>
+
+    <!-- Right stroke of V -->
+    <path d="M100 -80 L20 100" stroke="white" stroke-width="32" stroke-linecap="round" fill="none" opacity="0.9"/>
+
+    <!-- Transformation spark/magic dots -->
+    <circle cx="-60" cy="-40" r="12" fill="url(#accentGradient)" opacity="0.9"/>
+    <circle cx="60" cy="-40" r="12" fill="url(#accentGradient)" opacity="0.9"/>
+
+    <!-- Central spark representing AI transformation -->
+    <path d="M0 0 L-15 -25 L0 -50 L15 -25 Z" fill="url(#accentGradient)" opacity="0.95"/>
+    <path d="M0 0 L-15 25 L0 50 L15 25 Z" fill="white" opacity="0.7"/>
+
+    <!-- Small text lines suggesting rewriting -->
+    <rect x="-70" y="60" width="50" height="6" rx="3" fill="white" opacity="0.5"/>
+    <rect x="20" y="60" width="50" height="6" rx="3" fill="white" opacity="0.5"/>
+    <rect x="-40" y="80" width="80" height="6" rx="3" fill="white" opacity="0.4"/>
+  </g>
+</svg>

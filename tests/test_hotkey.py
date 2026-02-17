@@ -258,11 +258,10 @@ class TestHotKeyManager:
         manager._run_loop = MagicMock()
         manager._tap_thread = MagicMock()
 
-        with patch('vox.hotkey.CGEventTapEnable') as mock_tap_enable, \
-             patch('vox.hotkey.CoreFoundation') as mock_cf:
+        with patch('vox.hotkey.Quartz') as mock_quartz:
             manager.unregister_hotkey()
-            mock_tap_enable.assert_called_once()
-            mock_cf.CFRunLoopStop.assert_called_once()
+            mock_quartz.CGEventTapEnable.assert_called_once()
+            mock_quartz.CFRunLoopStop.assert_called_once()
             assert manager._tap is None
             assert manager._tap_callback is None
             assert manager._run_loop_source is None
@@ -285,7 +284,8 @@ class TestHotKeyManager:
         manager._run_loop = MagicMock()
         manager._tap_thread = MagicMock()
 
-        with patch('vox.hotkey.CGEventTapEnable', side_effect=Exception("Test error")):
+        with patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.CGEventTapEnable.side_effect = Exception("Test error")
             # Should not raise, just print error
             manager.unregister_hotkey()
 
@@ -336,11 +336,10 @@ class TestHotKeyManager:
         mock_rls = MagicMock()
 
         with patch('vox.hotkey.has_accessibility_permission', return_value=True), \
-             patch('vox.hotkey.CGEventTapCreate', return_value=mock_tap), \
-             patch('vox.hotkey.CGEventMaskBit', return_value=0x400), \
-             patch('vox.hotkey.CoreFoundation') as mock_cf, \
+             patch('vox.hotkey.Quartz') as mock_quartz, \
              patch('vox.hotkey.threading') as mock_threading:
-            mock_cf.CFMachPortCreateRunLoopSource.return_value = mock_rls
+            mock_quartz.CGEventTapCreate.return_value = mock_tap
+            mock_quartz.CFMachPortCreateRunLoopSource.return_value = mock_rls
             mock_thread = MagicMock()
             mock_threading.Thread.return_value = mock_thread
 
@@ -357,9 +356,9 @@ class TestHotKeyManager:
         manager._enabled = True
 
         with patch('vox.hotkey.has_accessibility_permission', return_value=True), \
-             patch('vox.hotkey.CGEventTapCreate', return_value=None), \
-             patch('vox.hotkey.CGEventMaskBit', return_value=0x400), \
+             patch('vox.hotkey.Quartz') as mock_quartz, \
              patch.object(manager, '_show_accessibility_dialog') as mock_dialog:
+            mock_quartz.CGEventTapCreate.return_value = None
             result = manager.register_hotkey()
             assert result is False
             mock_dialog.assert_called_once()
@@ -370,8 +369,8 @@ class TestHotKeyManager:
         manager._enabled = True
 
         with patch('vox.hotkey.has_accessibility_permission', return_value=True), \
-             patch('vox.hotkey.CGEventTapCreate', side_effect=Exception("Tap error")), \
-             patch('vox.hotkey.CGEventMaskBit', return_value=0x400):
+             patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.CGEventTapCreate.side_effect = Exception("Tap error")
             result = manager.register_hotkey()
             assert result is False
 
@@ -393,9 +392,9 @@ class TestHandleCGEvent:
         manager = self._make_manager()
         mock_event = MagicMock()
 
-        with patch('vox.hotkey.CGEventTapEnable') as mock_enable:
+        with patch('vox.hotkey.Quartz') as mock_quartz:
             result = manager._handle_cg_event(None, kCGEventTapDisabledByTimeout, mock_event)
-            mock_enable.assert_called_once_with(manager._tap, True)
+            mock_quartz.CGEventTapEnable.assert_called_once_with(manager._tap, True)
             assert result is mock_event
 
     def test_handle_disabled_by_user_input_passes_through(self):
@@ -409,16 +408,20 @@ class TestHandleCGEvent:
         """Test that non-keydown events pass through."""
         manager = self._make_manager()
         mock_event = MagicMock()
-        result = manager._handle_cg_event(None, 999, mock_event)
-        assert result is mock_event
-        manager._callback.assert_not_called()
+        with patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.kCGEventKeyDown = kCGEventKeyDown
+            result = manager._handle_cg_event(None, 999, mock_event)
+            assert result is mock_event
+            manager._callback.assert_not_called()
 
     def test_handle_wrong_keycode_passes_through(self):
         """Test that wrong key code passes through."""
         manager = self._make_manager()
         mock_event = MagicMock()
 
-        with patch('vox.hotkey.CGEventGetIntegerValueField', return_value=0x09):  # V, not D
+        with patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.kCGEventKeyDown = kCGEventKeyDown
+            mock_quartz.CGEventGetIntegerValueField.return_value = 0x09  # V, not D
             result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
             assert result is mock_event
             manager._callback.assert_not_called()
@@ -435,7 +438,9 @@ class TestHandleCGEvent:
                 return 1
             return 0
 
-        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field):
+        with patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.kCGEventKeyDown = kCGEventKeyDown
+            mock_quartz.CGEventGetIntegerValueField.side_effect = mock_get_field
             result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
             assert result is mock_event
             manager._callback.assert_not_called()
@@ -452,8 +457,10 @@ class TestHandleCGEvent:
                 return 0
             return 0
 
-        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field), \
-             patch('vox.hotkey.CGEventGetFlags', return_value=kCGEventFlagMaskAlternate):  # Option, not Cmd
+        with patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.kCGEventKeyDown = kCGEventKeyDown
+            mock_quartz.CGEventGetIntegerValueField.side_effect = mock_get_field
+            mock_quartz.CGEventGetFlags.return_value = kCGEventFlagMaskAlternate  # Option, not Cmd
             result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
             assert result is mock_event
             manager._callback.assert_not_called()
@@ -470,9 +477,11 @@ class TestHandleCGEvent:
                 return 0
             return 0
 
-        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field), \
-             patch('vox.hotkey.CGEventGetFlags', return_value=kCGEventFlagMaskCommand), \
+        with patch('vox.hotkey.Quartz') as mock_quartz, \
              patch('vox.hotkey.AppKit') as mock_appkit:
+            mock_quartz.kCGEventKeyDown = kCGEventKeyDown
+            mock_quartz.CGEventGetIntegerValueField.side_effect = mock_get_field
+            mock_quartz.CGEventGetFlags.return_value = kCGEventFlagMaskCommand
             mock_queue = MagicMock()
             mock_appkit.NSOperationQueue.mainQueue.return_value = mock_queue
 
@@ -493,8 +502,10 @@ class TestHandleCGEvent:
                 return 0
             return 0
 
-        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field), \
-             patch('vox.hotkey.CGEventGetFlags', return_value=kCGEventFlagMaskCommand):
+        with patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.kCGEventKeyDown = kCGEventKeyDown
+            mock_quartz.CGEventGetIntegerValueField.side_effect = mock_get_field
+            mock_quartz.CGEventGetFlags.return_value = kCGEventFlagMaskCommand
             result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
             assert result is mock_event
             manager._callback.assert_not_called()
@@ -504,7 +515,9 @@ class TestHandleCGEvent:
         manager = self._make_manager()
         mock_event = MagicMock()
 
-        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=Exception("boom")):
+        with patch('vox.hotkey.Quartz') as mock_quartz:
+            mock_quartz.kCGEventKeyDown = kCGEventKeyDown
+            mock_quartz.CGEventGetIntegerValueField.side_effect = Exception("boom")
             result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
             assert result is mock_event
 

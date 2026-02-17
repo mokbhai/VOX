@@ -1,38 +1,30 @@
 """
 Global hot key handling for Vox using Quartz CGEventTap.
 
-Uses CGEventTapCreate on a dedicated background thread with its own CFRunLoop.
-This fires reliably even during modal dialogs (NSAlert.runModal) on the main thread.
+Uses CGEventTapCreate on a dedicated background thread with its own CFRunLoop,
+matching the proven pattern used by pynput's macOS keyboard listener.
 """
 import threading
-import weakref
 
 import AppKit
-import CoreFoundation
+import Quartz
 from ApplicationServices import (
     AXIsProcessTrusted,
     AXIsProcessTrustedWithOptions,
     kAXTrustedCheckOptionPrompt,
 )
-from Quartz.CoreGraphics import (
-    CGEventTapCreate,
-    CGEventTapEnable,
-    CGEventGetIntegerValueField,
-    CGEventGetFlags,
-    CGEventMaskBit,
-    kCGHIDEventTap,
-    kCGTailAppendEventTap,
-    kCGEventTapOptionListenOnly,
-    kCGEventKeyDown,
-    kCGEventTapDisabledByTimeout,
-    kCGEventTapDisabledByUserInput,
-    kCGKeyboardEventKeycode,
-    kCGKeyboardEventAutorepeat,
-    kCGEventFlagMaskCommand,
-    kCGEventFlagMaskAlternate,
-    kCGEventFlagMaskControl,
-    kCGEventFlagMaskShift,
-)
+
+
+# CGEvent modifier flag constants
+kCGEventFlagMaskCommand = Quartz.kCGEventFlagMaskCommand
+kCGEventFlagMaskAlternate = Quartz.kCGEventFlagMaskAlternate
+kCGEventFlagMaskControl = Quartz.kCGEventFlagMaskControl
+kCGEventFlagMaskShift = Quartz.kCGEventFlagMaskShift
+kCGEventKeyDown = Quartz.kCGEventKeyDown
+kCGEventTapDisabledByTimeout = Quartz.kCGEventTapDisabledByTimeout
+kCGEventTapDisabledByUserInput = Quartz.kCGEventTapDisabledByUserInput
+kCGKeyboardEventKeycode = Quartz.kCGKeyboardEventKeycode
+kCGKeyboardEventAutorepeat = Quartz.kCGKeyboardEventAutorepeat
 
 
 def has_accessibility_permission() -> bool:
@@ -112,8 +104,8 @@ class HotKeyManager:
     """
     Manages global hot key using Quartz CGEventTap.
 
-    The event tap runs on a dedicated background thread so it fires
-    even while modal dialogs block the main thread.
+    The event tap runs on a dedicated background thread with its own CFRunLoop,
+    matching the pattern used by pynput's proven macOS keyboard listener.
     """
 
     def __init__(self):
@@ -174,39 +166,43 @@ class HotKeyManager:
                 flush=True,
             )
 
-            # Use a weak reference to avoid preventing GC of the manager
-            self_ref = weakref.ref(self)
-
+            # Build the callback — capture self directly (prevented from GC
+            # by storing in self._tap_callback)
             def tap_callback(proxy, event_type, event, user_info):
-                mgr = self_ref()
-                if mgr is None:
-                    return event
-                return mgr._handle_cg_event(proxy, event_type, event)
+                return self._handle_cg_event(proxy, event_type, event)
 
-            # Store references to prevent GC
             self._tap_callback = tap_callback
 
-            tap = CGEventTapCreate(
-                kCGHIDEventTap,
-                kCGTailAppendEventTap,
-                kCGEventTapOptionListenOnly,
-                CGEventMaskBit(kCGEventKeyDown),
+            # Event mask: key down + modifier changes
+            event_mask = (
+                Quartz.CGEventMaskBit(Quartz.kCGEventKeyDown)
+                | Quartz.CGEventMaskBit(Quartz.kCGEventKeyUp)
+                | Quartz.CGEventMaskBit(Quartz.kCGEventFlagsChanged)
+            )
+
+            # Create the event tap — using Quartz module directly (proven pattern)
+            tap = Quartz.CGEventTapCreate(
+                Quartz.kCGSessionEventTap,
+                Quartz.kCGHeadInsertEventTap,
+                Quartz.kCGEventTapOptionListenOnly,
+                event_mask,
                 tap_callback,
                 None,
             )
 
             if tap is None:
-                print("CGEventTapCreate returned None — Accessibility permission required.")
+                print("CGEventTapCreate returned None — check Accessibility permission.", flush=True)
                 self._show_accessibility_dialog()
                 return False
 
             self._tap = tap
-            self._run_loop_source = CoreFoundation.CFMachPortCreateRunLoopSource(
-                CoreFoundation.kCFAllocatorDefault,
-                tap,
-                0,
+
+            # Create run loop source — use None for default allocator (pynput pattern)
+            self._run_loop_source = Quartz.CFMachPortCreateRunLoopSource(
+                None, tap, 0
             )
 
+            # Start background thread with its own CFRunLoop (pynput pattern)
             self._tap_thread = threading.Thread(
                 target=self._run_tap_loop,
                 name="VoxHotkeyTap",
@@ -225,48 +221,50 @@ class HotKeyManager:
             return False
 
     def _run_tap_loop(self):
-        """Background thread that runs the CFRunLoop for the event tap."""
-        self._run_loop = CoreFoundation.CFRunLoopGetCurrent()
-        CoreFoundation.CFRunLoopAddSource(
+        """Background thread running its own CFRunLoop for the event tap."""
+        self._run_loop = Quartz.CFRunLoopGetCurrent()
+        Quartz.CFRunLoopAddSource(
             self._run_loop,
             self._run_loop_source,
-            CoreFoundation.kCFRunLoopCommonModes,
+            Quartz.kCFRunLoopDefaultMode,
         )
-        CGEventTapEnable(self._tap, True)
-        CoreFoundation.CFRunLoopRun()
+        Quartz.CGEventTapEnable(self._tap, True)
+        print("CGEventTap run loop started on background thread", flush=True)
+        Quartz.CFRunLoopRun()
+        print("CGEventTap run loop exited", flush=True)
 
     def _handle_cg_event(self, proxy, event_type, event):
         """Handle a CGEvent from the tap callback (runs on background thread)."""
         try:
             if event_type == kCGEventTapDisabledByTimeout:
-                print("CGEventTap disabled by timeout — re-enabling")
-                CGEventTapEnable(self._tap, True)
+                print("CGEventTap disabled by timeout — re-enabling", flush=True)
+                Quartz.CGEventTapEnable(self._tap, True)
                 return event
 
             if event_type == kCGEventTapDisabledByUserInput:
                 return event
 
-            if event_type != kCGEventKeyDown:
+            if event_type != Quartz.kCGEventKeyDown:
                 return event
 
-            keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+            keycode = Quartz.CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
             if keycode != self._target_key_code:
                 return event
 
             # Skip key-repeat events
-            autorepeat = CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)
+            autorepeat = Quartz.CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)
             if autorepeat:
                 return event
 
             # Check modifier flags — only compare the four standard modifiers
-            flags = CGEventGetFlags(event)
+            flags = Quartz.CGEventGetFlags(event)
             relevant_flags = flags & ALL_MODIFIER_FLAGS_MASK
             if relevant_flags != self._target_modifiers:
                 return event
 
             # Hot key matched — dispatch callback to the main thread
             if self._enabled and self._callback:
-                print(f"Hot key triggered: {self._modifiers_str}+{self._key_str}")
+                print(f"Hot key triggered: {self._modifiers_str}+{self._key_str}", flush=True)
                 AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self._callback)
 
             return event
@@ -284,10 +282,10 @@ class HotKeyManager:
 
         try:
             if self._tap:
-                CGEventTapEnable(self._tap, False)
+                Quartz.CGEventTapEnable(self._tap, False)
 
             if self._run_loop:
-                CoreFoundation.CFRunLoopStop(self._run_loop)
+                Quartz.CFRunLoopStop(self._run_loop)
 
             if self._tap_thread:
                 self._tap_thread.join(timeout=2.0)
