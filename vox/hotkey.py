@@ -191,8 +191,12 @@ class HotKeyManager:
             )
 
             if tap is None:
-                print("CGEventTapCreate returned None — check Accessibility permission.", flush=True)
-                self._show_accessibility_dialog()
+                print(
+                    "CGEventTapCreate returned None — Accessibility is granted, "
+                    "likely missing Input Monitoring permission.",
+                    flush=True,
+                )
+                self._show_input_monitoring_dialog()
                 return False
 
             self._tap = tap
@@ -307,13 +311,46 @@ class HotKeyManager:
         return self.register_hotkey()
 
     def _show_accessibility_dialog(self):
-        """Show dialog for Accessibility permission."""
+        """Show dialog for Accessibility and Input Monitoring permissions."""
         alert = AppKit.NSAlert.alloc().init()
-        alert.setMessageText_("Accessibility Permission Required")
+        alert.setMessageText_("Permissions Required")
         alert.setInformativeText_(
-            "Vox needs Accessibility permission to use global hot keys.\n\n"
+            "Vox needs two permissions to use global hot keys:\n\n"
+            "1. Open System Settings → Privacy & Security\n"
+            "2. Enable Accessibility for Vox (or Terminal in dev mode)\n"
+            "3. Enable Input Monitoring for Vox (or Terminal in dev mode)\n\n"
+            "Then restart Vox."
+        )
+        alert.setAlertStyle_(AppKit.NSAlertStyleWarning)
+        alert.addButtonWithTitle_("Open Accessibility")
+        alert.addButtonWithTitle_("Open Input Monitoring")
+        alert.addButtonWithTitle_("Cancel")
+
+        AppKit.NSApp.activateIgnoringOtherApps_(True)
+
+        response = alert.runModal()
+
+        if response == AppKit.NSAlertFirstButtonReturn:
+            AppKit.NSWorkspace.sharedWorkspace().openURL_(
+                AppKit.NSURL.URLWithString_(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                )
+            )
+        elif response == AppKit.NSAlertSecondButtonReturn:
+            AppKit.NSWorkspace.sharedWorkspace().openURL_(
+                AppKit.NSURL.URLWithString_(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+                )
+            )
+
+    def _show_input_monitoring_dialog(self):
+        """Show dialog for Input Monitoring permission."""
+        alert = AppKit.NSAlert.alloc().init()
+        alert.setMessageText_("Input Monitoring Permission Required")
+        alert.setInformativeText_(
+            "Vox needs Input Monitoring permission to detect global hot keys.\n\n"
             "1. Open System Settings\n"
-            "2. Go to Privacy & Security → Accessibility\n"
+            "2. Go to Privacy & Security → Input Monitoring\n"
             "3. Find Terminal or Vox and enable it\n\n"
             "Then restart Vox."
         )
@@ -327,7 +364,9 @@ class HotKeyManager:
 
         if response == AppKit.NSAlertFirstButtonReturn:
             AppKit.NSWorkspace.sharedWorkspace().openURL_(
-                AppKit.NSURL.URLWithString_("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                AppKit.NSURL.URLWithString_(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+                )
             )
 
 
