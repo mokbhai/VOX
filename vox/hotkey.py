@@ -83,6 +83,56 @@ ALL_MODIFIER_FLAGS_MASK = (
 )
 
 
+# Reverse mapping: key code -> character
+KEY_CODE_TO_CHAR = {code: char for char, code in KEY_CODES.items()}
+
+# Ordered list of (CGEvent flag, display symbol) for building shortcut strings
+MODIFIER_SYMBOLS = [
+    (kCGEventFlagMaskControl, "⌃"),
+    (kCGEventFlagMaskAlternate, "⌥"),
+    (kCGEventFlagMaskShift, "⇧"),
+    (kCGEventFlagMaskCommand, "⌘"),
+]
+
+
+def format_hotkey_display(modifier_mask: int, key_char: str) -> str:
+    """
+    Format a hotkey combination as a symbol string like "⌘⌥V".
+
+    Args:
+        modifier_mask: Combined CGEvent modifier flags.
+        key_char: The key character (e.g. "v").
+
+    Returns:
+        Display string with modifier symbols and uppercase key.
+    """
+    symbols = ""
+    for flag, symbol in MODIFIER_SYMBOLS:
+        if modifier_mask & flag:
+            symbols += symbol
+    return symbols + key_char.upper()
+
+
+def modifier_mask_to_string(mask: int) -> str:
+    """
+    Convert a CGEvent modifier mask to a config-compatible string like "cmd+option".
+
+    Args:
+        mask: Combined CGEvent modifier flags.
+
+    Returns:
+        Plus-separated modifier names suitable for config storage.
+    """
+    flag_to_name = {
+        kCGEventFlagMaskCommand: "cmd",
+        kCGEventFlagMaskAlternate: "option",
+        kCGEventFlagMaskControl: "control",
+        kCGEventFlagMaskShift: "shift",
+    }
+    names = [name for flag, name in flag_to_name.items() if mask & flag]
+    return "+".join(names) if names else "option"
+
+
 def get_key_code(key_str: str) -> int:
     """Get key code for a key character."""
     key = key_str.lower()

@@ -18,6 +18,8 @@ build:
 	rm -rf $(BUILD_DIR) $(DIST_DIR)
 	uv run pyinstaller vox.spec
 	@if [ -d "$(DIST_DIR)/$(APP_NAME).app" ]; then \
+		echo "Signing $(APP_NAME).app..."; \
+		codesign --force --deep --sign - $(DIST_DIR)/$(APP_NAME).app; \
 		echo "Build successful: $(DIST_DIR)/$(APP_NAME).app"; \
 	else \
 		echo "Build failed!"; \
@@ -34,6 +36,7 @@ clean:
 # Install to /Applications
 install: build
 	cp -R $(DIST_DIR)/$(APP_NAME).app /Applications/
+	codesign --force --deep --sign - /Applications/$(APP_NAME).app
 
 # Run in development mode (requires pbs -flush after changes)
 dev: sync

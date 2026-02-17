@@ -25,7 +25,153 @@ from vox.config import get_config
 from vox.api import RewriteMode, RewriteAPI, APIKeyError, NetworkError, RateLimitError, RewriteError
 from vox.service import ServiceProvider
 from vox.notifications import ToastManager, ErrorNotifier
-from vox.hotkey import create_hotkey_manager
+from vox.hotkey import (
+    create_hotkey_manager,
+    KEY_CODE_TO_CHAR,
+    MODIFIER_SYMBOLS,
+    format_hotkey_display,
+    modifier_mask_to_string,
+    parse_modifiers,
+)
+
+
+class EditableTextField(AppKit.NSTextField):
+    """NSTextField subclass that supports Cmd+C/V/X/A in NSAlert modal sessions.
+
+    NSAlert's modal run loop intercepts key equivalents before they reach the
+    field editor.  This subclass catches Cmd+C/V/X/A in performKeyEquivalent_
+    and forwards them via NSApp.sendAction_to_from_() so clipboard operations
+    work normally.
+    """
+
+    def performKeyEquivalent_(self, event):
+        flags = event.modifierFlags()
+        if flags & AppKit.NSEventModifierFlagCommand:
+            chars = event.charactersIgnoringModifiers()
+            action_map = {
+                "c": "copy:",
+                "v": "paste:",
+                "x": "cut:",
+                "a": "selectAll:",
+            }
+            action_sel = action_map.get(chars)
+            if action_sel:
+                return AppKit.NSApp.sendAction_to_from_(action_sel, None, self)
+        return objc.super(EditableTextField, self).performKeyEquivalent_(event)
+
+
+class HotkeyRecorderField(AppKit.NSTextField):
+    """NSTextField subclass that records a keyboard shortcut.
+
+    When focused it shows "Press shortcut..." and waits for a modifier+key
+    combination.  While the user holds modifier keys it previews them as
+    symbols (e.g. "⌘⌥...").  Once a valid key is pressed it stores the
+    result and displays it (e.g. "⌘⌥V").
+
+    After recording, `modifiers_mask` and `key_char` hold the raw values and
+    `get_modifiers_string()` / `get_key_string()` return config-compatible
+    strings.
+    """
+
+    def initWithFrame_(self, frame):
+        self = objc.super(HotkeyRecorderField, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self._modifiers_mask = 0
+        self._key_char = ""
+        self._recording = False
+        self._original_value = ""
+        return self
+
+    # -- public API ----------------------------------------------------------
+
+    def set_hotkey(self, modifiers_str, key_str):
+        """Initialise from config strings (e.g. "cmd+option", "v")."""
+        self._modifiers_mask = parse_modifiers(modifiers_str)
+        self._key_char = key_str.lower()
+        self.setStringValue_(format_hotkey_display(self._modifiers_mask, self._key_char))
+
+    def get_modifiers_string(self):
+        return modifier_mask_to_string(self._modifiers_mask)
+
+    def get_key_string(self):
+        return self._key_char.lower() if self._key_char else "v"
+
+    # -- focus / recording ---------------------------------------------------
+
+    def becomeFirstResponder(self):
+        result = objc.super(HotkeyRecorderField, self).becomeFirstResponder()
+        if result:
+            self._recording = True
+            self._original_value = self.stringValue()
+            self.setStringValue_("Press shortcut...")
+        return result
+
+    def resignFirstResponder(self):
+        if self._recording:
+            self._recording = False
+            # If no valid shortcut was recorded, revert
+            if not self._key_char:
+                self.setStringValue_(self._original_value)
+            else:
+                self.setStringValue_(format_hotkey_display(self._modifiers_mask, self._key_char))
+        return objc.super(HotkeyRecorderField, self).resignFirstResponder()
+
+    # -- event handling ------------------------------------------------------
+
+    def performKeyEquivalent_(self, event):
+        if not self._recording:
+            return objc.super(HotkeyRecorderField, self).performKeyEquivalent_(event)
+        # Intercept everything while recording
+        self._process_key_event(event)
+        return True
+
+    def keyDown_(self, event):
+        if not self._recording:
+            objc.super(HotkeyRecorderField, self).keyDown_(event)
+            return
+        self._process_key_event(event)
+
+    def flagsChanged_(self, event):
+        if not self._recording:
+            objc.super(HotkeyRecorderField, self).flagsChanged_(event)
+            return
+        flags = event.modifierFlags()
+        mask = 0
+        for flag, _ in MODIFIER_SYMBOLS:
+            if flags & flag:
+                mask |= flag
+        if mask:
+            symbols = "".join(sym for f, sym in MODIFIER_SYMBOLS if mask & f)
+            self.setStringValue_(symbols + "...")
+        else:
+            self.setStringValue_("Press shortcut...")
+
+    # -- internal ------------------------------------------------------------
+
+    def _process_key_event(self, event):
+        keycode = event.keyCode()
+        char = KEY_CODE_TO_CHAR.get(keycode)
+        if char is None:
+            return  # ignore non-mapped keys (e.g. pure modifier press)
+
+        flags = event.modifierFlags()
+        mask = 0
+        for flag, _ in MODIFIER_SYMBOLS:
+            if flags & flag:
+                mask |= flag
+
+        if not mask:
+            return  # require at least one modifier
+
+        self._modifiers_mask = mask
+        self._key_char = char
+        self._recording = False
+        self.setStringValue_(format_hotkey_display(mask, char))
+
+        # Move focus away to signal completion
+        if self.window():
+            self.window().makeFirstResponder_(None)
 
 
 def show_settings_dialog(callback, config):
@@ -44,12 +190,12 @@ def show_settings_dialog(callback, config):
     current_hotkey_modifiers = config.hotkey_modifiers
     current_hotkey_key = config.hotkey_key
 
-    # Create container for all fields (increased height for hot key settings)
+    # Create container for all fields
     container = AppKit.NSView.alloc().initWithFrame_(
-        Foundation.NSMakeRect(0, 0, 380, 325)
+        Foundation.NSMakeRect(0, 0, 380, 290)
     )
 
-    y_offset = 305
+    y_offset = 270
 
     # API Key
     api_label = AppKit.NSTextField.alloc().initWithFrame_(
@@ -63,7 +209,7 @@ def show_settings_dialog(callback, config):
     api_label.setAlignment_(AppKit.NSTextAlignmentRight)
     container.addSubview_(api_label)
 
-    api_field = AppKit.NSTextField.alloc().initWithFrame_(
+    api_field = EditableTextField.alloc().initWithFrame_(
         Foundation.NSMakeRect(110, y_offset, 260, 24)
     )
     api_field.setStringValue_(current_key)
@@ -86,7 +232,7 @@ def show_settings_dialog(callback, config):
     model_label.setAlignment_(AppKit.NSTextAlignmentRight)
     container.addSubview_(model_label)
 
-    model_field = AppKit.NSTextField.alloc().initWithFrame_(
+    model_field = EditableTextField.alloc().initWithFrame_(
         Foundation.NSMakeRect(110, y_offset, 260, 24)
     )
     model_field.setStringValue_(current_model)
@@ -109,7 +255,7 @@ def show_settings_dialog(callback, config):
     url_label.setAlignment_(AppKit.NSTextAlignmentRight)
     container.addSubview_(url_label)
 
-    url_field = AppKit.NSTextField.alloc().initWithFrame_(
+    url_field = EditableTextField.alloc().initWithFrame_(
         Foundation.NSMakeRect(110, y_offset, 260, 24)
     )
     url_field.setStringValue_(current_url)
@@ -186,61 +332,37 @@ def show_settings_dialog(callback, config):
 
     y_offset -= 35
 
-    # Hot key modifiers
-    hotkey_mod_label = AppKit.NSTextField.alloc().initWithFrame_(
+    # Shortcut recorder
+    shortcut_label = AppKit.NSTextField.alloc().initWithFrame_(
         Foundation.NSMakeRect(0, y_offset, 100, 20)
     )
-    hotkey_mod_label.setStringValue_("Modifiers:")
-    hotkey_mod_label.setBezeled_(False)
-    hotkey_mod_label.setDrawsBackground_(False)
-    hotkey_mod_label.setEditable_(False)
-    hotkey_mod_label.setSelectable_(False)
-    hotkey_mod_label.setAlignment_(AppKit.NSTextAlignmentRight)
-    container.addSubview_(hotkey_mod_label)
+    shortcut_label.setStringValue_("Shortcut:")
+    shortcut_label.setBezeled_(False)
+    shortcut_label.setDrawsBackground_(False)
+    shortcut_label.setEditable_(False)
+    shortcut_label.setSelectable_(False)
+    shortcut_label.setAlignment_(AppKit.NSTextAlignmentRight)
+    container.addSubview_(shortcut_label)
 
-    hotkey_mod_field = AppKit.NSTextField.alloc().initWithFrame_(
-        Foundation.NSMakeRect(110, y_offset, 260, 24)
+    hotkey_recorder = HotkeyRecorderField.alloc().initWithFrame_(
+        Foundation.NSMakeRect(110, y_offset, 120, 24)
     )
-    hotkey_mod_field.setStringValue_(current_hotkey_modifiers)
-    hotkey_mod_field.setPlaceholderString_("option, cmd+shift, etc.")
-    hotkey_mod_field.setEditable_(True)
-    hotkey_mod_field.setSelectable_(True)
-    container.addSubview_(hotkey_mod_field)
+    hotkey_recorder.set_hotkey(current_hotkey_modifiers, current_hotkey_key)
+    hotkey_recorder.setEditable_(True)
+    hotkey_recorder.setSelectable_(True)
+    container.addSubview_(hotkey_recorder)
 
-    y_offset -= 35
-
-    # Hot key key
-    hotkey_key_label = AppKit.NSTextField.alloc().initWithFrame_(
-        Foundation.NSMakeRect(0, y_offset, 100, 20)
+    shortcut_help = AppKit.NSTextField.alloc().initWithFrame_(
+        Foundation.NSMakeRect(240, y_offset, 140, 20)
     )
-    hotkey_key_label.setStringValue_("Key:")
-    hotkey_key_label.setBezeled_(False)
-    hotkey_key_label.setDrawsBackground_(False)
-    hotkey_key_label.setEditable_(False)
-    hotkey_key_label.setSelectable_(False)
-    hotkey_key_label.setAlignment_(AppKit.NSTextAlignmentRight)
-    container.addSubview_(hotkey_key_label)
-
-    hotkey_key_field = AppKit.NSTextField.alloc().initWithFrame_(
-        Foundation.NSMakeRect(110, y_offset, 50, 24)
-    )
-    hotkey_key_field.setStringValue_(current_hotkey_key.upper())
-    hotkey_key_field.setPlaceholderString_("V")
-    hotkey_key_field.setEditable_(True)
-    hotkey_key_field.setSelectable_(True)
-    container.addSubview_(hotkey_key_field)
-
-    hotkey_help = AppKit.NSTextField.alloc().initWithFrame_(
-        Foundation.NSMakeRect(170, y_offset, 200, 20)
-    )
-    hotkey_help.setStringValue_("(e.g., V, R, etc.)")
-    hotkey_help.setBezeled_(False)
-    hotkey_help.setDrawsBackground_(False)
-    hotkey_help.setEditable_(False)
-    hotkey_help.setSelectable_(False)
-    hotkey_help.setTextColor_(AppKit.NSColor.secondaryLabelColor())
-    hotkey_help.setFont_(AppKit.NSFont.systemFontOfSize_(11))
-    container.addSubview_(hotkey_help)
+    shortcut_help.setStringValue_("Click, then press keys")
+    shortcut_help.setBezeled_(False)
+    shortcut_help.setDrawsBackground_(False)
+    shortcut_help.setEditable_(False)
+    shortcut_help.setSelectable_(False)
+    shortcut_help.setTextColor_(AppKit.NSColor.secondaryLabelColor())
+    shortcut_help.setFont_(AppKit.NSFont.systemFontOfSize_(11))
+    container.addSubview_(shortcut_help)
 
     alert.setAccessoryView_(container)
 
@@ -258,8 +380,8 @@ def show_settings_dialog(callback, config):
         base_url = url_field.stringValue().strip() or None
         auto_start = auto_checkbox.state() == AppKit.NSControlStateValueOn
         hotkey_enabled = hotkey_enable_checkbox.state() == AppKit.NSControlStateValueOn
-        hotkey_modifiers = hotkey_mod_field.stringValue().strip() or "option"
-        hotkey_key = hotkey_key_field.stringValue().strip().lower() or "v"
+        hotkey_modifiers = hotkey_recorder.get_modifiers_string()
+        hotkey_key = hotkey_recorder.get_key_string()
 
         if callback:
             callback(api_key, model, base_url, auto_start, hotkey_enabled, hotkey_modifiers, hotkey_key)
@@ -267,8 +389,9 @@ def show_settings_dialog(callback, config):
 
 def show_about_dialog(hotkey_modifiers: str = "option", hotkey_key: str = "v"):
     """Show about dialog."""
-    # Format hot key for display
-    hotkey_display = f"{hotkey_modifiers.upper()}+{hotkey_key.upper()}"
+    # Format hot key for display using symbols
+    mod_mask = parse_modifiers(hotkey_modifiers)
+    hotkey_display = format_hotkey_display(mod_mask, hotkey_key)
     alert = AppKit.NSAlert.alloc().init()
     alert.setMessageText_("Vox")
     alert.setInformativeText_(
@@ -331,6 +454,20 @@ class ModePickerDialog(AppKit.NSObject):
         # Activate app and show modal
         AppKit.NSApp.activateIgnoringOtherApps_(True)
         response = alert.runModal()
+
+        # Explicitly dismiss the alert window and drain pending UI events
+        # so it is visually gone before the callback blocks on the API call.
+        alert.window().orderOut_(None)
+        while True:
+            event = AppKit.NSApp.nextEventMatchingMask_untilDate_inMode_dequeue_(
+                AppKit.NSEventMaskAny,
+                Foundation.NSDate.distantPast(),
+                AppKit.NSDefaultRunLoopMode,
+                True,
+            )
+            if event is None:
+                break
+            AppKit.NSApp.sendEvent_(event)
 
         # Map button response to mode
         # NSAlert returns NSAlertFirstButtonReturn (1000) for first button, 1001 for second, etc.

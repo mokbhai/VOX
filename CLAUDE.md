@@ -12,11 +12,11 @@ Vox is a macOS menu bar application that provides AI-powered text rewriting thro
 
 - **`vox/main.py`** - Entry point; initializes both the menu bar app and service provider registration
 - **`vox/service.py`** - macOS Services API integration via PyObjC; receives text from contextual menu and processes it
-- **`vox/ui.py`** - Menu bar app with settings dialog; handles text selection/paste simulation using CGEvent; shows mode picker dialog
+- **`vox/ui.py`** - Menu bar app with settings dialog; handles text selection/paste simulation using CGEvent; shows mode picker dialog; includes `EditableTextField` (fixes Cmd+C/V/X/A in NSAlert modals) and `HotkeyRecorderField` (captures keyboard shortcuts)
 - **`vox/api.py`** - OpenAI API client; defines rewrite modes with system prompts; supports custom base URLs
 - **`vox/config.py`** - Configuration management; stores settings in `~/Library/Application Support/Vox/config.yml`
 - **`vox/notifications.py`** - Toast popups near cursor for loading state; macOS notification banners for errors
-- **`vox/hotkey.py`** - Global hot key handling using Quartz CGEventTap; requires Accessibility permission
+- **`vox/hotkey.py`** - Global hot key handling using Quartz CGEventTap; requires Accessibility permission; includes display helpers (`format_hotkey_display`, `modifier_mask_to_string`) for symbol-formatted shortcuts
 
 ### Data Flow
 
