@@ -1,13 +1,37 @@
 """
-Global hot key handling for Vox using NSEvent global monitors.
+Global hot key handling for Vox using Quartz CGEventTap.
 
-Monitors for configurable key combination globally.
+Uses CGEventTapCreate on a dedicated background thread with its own CFRunLoop.
+This fires reliably even during modal dialogs (NSAlert.runModal) on the main thread.
 """
+import threading
+import weakref
+
 import AppKit
+import CoreFoundation
 from ApplicationServices import (
     AXIsProcessTrusted,
     AXIsProcessTrustedWithOptions,
     kAXTrustedCheckOptionPrompt,
+)
+from Quartz.CoreGraphics import (
+    CGEventTapCreate,
+    CGEventTapEnable,
+    CGEventGetIntegerValueField,
+    CGEventGetFlags,
+    CGEventMaskBit,
+    kCGHIDEventTap,
+    kCGTailAppendEventTap,
+    kCGEventTapOptionListenOnly,
+    kCGEventKeyDown,
+    kCGEventTapDisabledByTimeout,
+    kCGEventTapDisabledByUserInput,
+    kCGKeyboardEventKeycode,
+    kCGKeyboardEventAutorepeat,
+    kCGEventFlagMaskCommand,
+    kCGEventFlagMaskAlternate,
+    kCGEventFlagMaskControl,
+    kCGEventFlagMaskShift,
 )
 
 
@@ -46,6 +70,26 @@ KEY_CODES = {
     '5': 0x17, '6': 0x16, '7': 0x1A, '8': 0x1C, '9': 0x19,
 }
 
+# Modifier flag constants (CGEvent values)
+MODIFIER_FLAGS = {
+    'cmd': kCGEventFlagMaskCommand,
+    'command': kCGEventFlagMaskCommand,
+    'option': kCGEventFlagMaskAlternate,
+    'opt': kCGEventFlagMaskAlternate,
+    'alt': kCGEventFlagMaskAlternate,
+    'control': kCGEventFlagMaskControl,
+    'ctrl': kCGEventFlagMaskControl,
+    'shift': kCGEventFlagMaskShift,
+}
+
+# Mask covering all four modifier bits we check
+ALL_MODIFIER_FLAGS_MASK = (
+    kCGEventFlagMaskCommand
+    | kCGEventFlagMaskAlternate
+    | kCGEventFlagMaskControl
+    | kCGEventFlagMaskShift
+)
+
 
 def get_key_code(key_str: str) -> int:
     """Get key code for a key character."""
@@ -59,36 +103,34 @@ def parse_modifiers(modifiers_str: str) -> int:
     """Parse modifier string to CGEvent flag mask."""
     mask = 0
     parts = modifiers_str.lower().replace(' ', '+').split('+')
-
     for part in parts:
-        if part == 'cmd' or part == 'command':
-            mask |= AppKit.NSEventModifierFlagCommand
-        elif part == 'option' or part == 'opt' or part == 'alt':
-            mask |= AppKit.NSEventModifierFlagOption
-        elif part == 'control' or part == 'ctrl':
-            mask |= AppKit.NSEventModifierFlagControl
-        elif part == 'shift':
-            mask |= AppKit.NSEventModifierFlagShift
-
+        mask |= MODIFIER_FLAGS.get(part, 0)
     return mask
 
 
 class HotKeyManager:
     """
     Manages global hot key using Quartz CGEventTap.
+
+    The event tap runs on a dedicated background thread so it fires
+    even while modal dialogs block the main thread.
     """
 
     def __init__(self):
         """Initialize the hot key manager."""
         self._callback = None
-        self._event_monitor = None
-        self._event_handler = None  # Keep reference to prevent GC
         self._enabled = True
         self._modifiers_str = "option"
         self._key_str = "v"
         self._target_key_code = 0
         self._target_modifiers = 0
         self._is_registered = False
+        # CGEventTap state
+        self._tap = None
+        self._tap_callback = None
+        self._run_loop_source = None
+        self._run_loop = None
+        self._tap_thread = None
 
     def set_callback(self, callback):
         """Set the callback function."""
@@ -106,7 +148,7 @@ class HotKeyManager:
             self.unregister_hotkey()
 
     def register_hotkey(self) -> bool:
-        """Register the global hot key."""
+        """Register the global hot key using CGEventTap."""
         if not self._enabled:
             return False
 
@@ -118,100 +160,59 @@ class HotKeyManager:
         if not has_accessibility_permission():
             print("Requesting Accessibility permission...")
             request_accessibility_permission()
-
-            import time
-            time.sleep(1.0)
-
             if not has_accessibility_permission():
                 self._show_accessibility_dialog()
                 return False
 
         try:
-            target_key_code = get_key_code(self._key_str)
-            target_modifiers = parse_modifiers(self._modifiers_str)
+            self._target_key_code = get_key_code(self._key_str)
+            self._target_modifiers = parse_modifiers(self._modifiers_str)
 
-            print(f"Setting up hot key monitor: {self._modifiers_str}+{self._key_str} (key={target_key_code}, mod={target_modifiers})", flush=True)
-
-            # Store target values as instance attributes for callback access
-            self._target_key_code = target_key_code
-            self._target_modifiers = target_modifiers
-
-            # Create event tap using NSEvent's global monitor
-            # This is the recommended PyObjC approach
-            # Note: Global monitors observe events but cannot consume them
-            def event_handler(event):
-                try:
-                    # Get key code
-                    key_code = event.keyCode()
-                    flags = event.modifierFlags()
-
-                    # Check key code first (cheap check)
-                    if key_code != self._target_key_code:
-                        return
-
-                    # Check modifiers (mask out device-independent flags)
-                    device_flags = flags & AppKit.NSEventModifierFlagDeviceIndependentFlagsMask
-
-                    is_cmd = bool(device_flags & AppKit.NSEventModifierFlagCommand)
-                    is_option = bool(device_flags & AppKit.NSEventModifierFlagOption)
-                    is_control = bool(device_flags & AppKit.NSEventModifierFlagControl)
-                    is_shift = bool(device_flags & AppKit.NSEventModifierFlagShift)
-
-                    # Check if modifiers match
-                    matches = True
-
-                    # Check each target modifier
-                    if self._target_modifiers & AppKit.NSEventModifierFlagCommand:
-                        if not is_cmd:
-                            matches = False
-                    elif is_cmd:
-                        matches = False
-
-                    if self._target_modifiers & AppKit.NSEventModifierFlagOption:
-                        if not is_option:
-                            matches = False
-                    elif is_option and (self._target_modifiers != 0):
-                        matches = False
-
-                    if self._target_modifiers & AppKit.NSEventModifierFlagControl:
-                        if not is_control:
-                            matches = False
-                    elif is_control and (self._target_modifiers != 0):
-                        matches = False
-
-                    if self._target_modifiers & AppKit.NSEventModifierFlagShift:
-                        if not is_shift:
-                            matches = False
-                    elif is_shift and (self._target_modifiers != 0):
-                        matches = False
-
-                    if matches and self._callback:
-                        print(f"Hot key triggered: {self._modifiers_str}+{self._key_str}")
-                        # Run callback on main thread
-                        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self._callback)
-
-                except Exception as e:
-                    print(f"Error in hot key callback: {e}")
-                    import traceback
-                    traceback.print_exc()
-
-            # Store handler reference to prevent GC
-            self._event_handler = event_handler
-
-            # Use addGlobalMonitorForEventsMatchingMask for global key monitoring
-            # This requires Accessibility permission
-            mask = AppKit.NSEventMaskKeyDown
-            self._event_monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-                mask,
-                event_handler
+            print(
+                f"Setting up CGEventTap hot key: {self._modifiers_str}+{self._key_str} "
+                f"(key={self._target_key_code}, mod={self._target_modifiers})",
+                flush=True,
             )
 
-            if self._event_monitor is None:
-                print("Failed to create global event monitor.")
-                print("Make sure Vox has Accessibility permission.")
-                print("Go to System Settings > Privacy & Security > Accessibility")
+            # Use a weak reference to avoid preventing GC of the manager
+            self_ref = weakref.ref(self)
+
+            def tap_callback(proxy, event_type, event, user_info):
+                mgr = self_ref()
+                if mgr is None:
+                    return event
+                return mgr._handle_cg_event(proxy, event_type, event)
+
+            # Store references to prevent GC
+            self._tap_callback = tap_callback
+
+            tap = CGEventTapCreate(
+                kCGHIDEventTap,
+                kCGTailAppendEventTap,
+                kCGEventTapOptionListenOnly,
+                CGEventMaskBit(kCGEventKeyDown),
+                tap_callback,
+                None,
+            )
+
+            if tap is None:
+                print("CGEventTapCreate returned None — Accessibility permission required.")
                 self._show_accessibility_dialog()
                 return False
+
+            self._tap = tap
+            self._run_loop_source = CoreFoundation.CFMachPortCreateRunLoopSource(
+                CoreFoundation.kCFAllocatorDefault,
+                tap,
+                0,
+            )
+
+            self._tap_thread = threading.Thread(
+                target=self._run_tap_loop,
+                name="VoxHotkeyTap",
+                daemon=True,
+            )
+            self._tap_thread.start()
 
             self._is_registered = True
             print(f"Hot key registered: {self._modifiers_str}+{self._key_str}", flush=True)
@@ -223,17 +224,79 @@ class HotKeyManager:
             traceback.print_exc()
             return False
 
+    def _run_tap_loop(self):
+        """Background thread that runs the CFRunLoop for the event tap."""
+        self._run_loop = CoreFoundation.CFRunLoopGetCurrent()
+        CoreFoundation.CFRunLoopAddSource(
+            self._run_loop,
+            self._run_loop_source,
+            CoreFoundation.kCFRunLoopCommonModes,
+        )
+        CGEventTapEnable(self._tap, True)
+        CoreFoundation.CFRunLoopRun()
+
+    def _handle_cg_event(self, proxy, event_type, event):
+        """Handle a CGEvent from the tap callback (runs on background thread)."""
+        try:
+            if event_type == kCGEventTapDisabledByTimeout:
+                print("CGEventTap disabled by timeout — re-enabling")
+                CGEventTapEnable(self._tap, True)
+                return event
+
+            if event_type == kCGEventTapDisabledByUserInput:
+                return event
+
+            if event_type != kCGEventKeyDown:
+                return event
+
+            keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+            if keycode != self._target_key_code:
+                return event
+
+            # Skip key-repeat events
+            autorepeat = CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)
+            if autorepeat:
+                return event
+
+            # Check modifier flags — only compare the four standard modifiers
+            flags = CGEventGetFlags(event)
+            relevant_flags = flags & ALL_MODIFIER_FLAGS_MASK
+            if relevant_flags != self._target_modifiers:
+                return event
+
+            # Hot key matched — dispatch callback to the main thread
+            if self._enabled and self._callback:
+                print(f"Hot key triggered: {self._modifiers_str}+{self._key_str}")
+                AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self._callback)
+
+            return event
+
+        except Exception as e:
+            print(f"Error in CGEventTap callback: {e}")
+            import traceback
+            traceback.print_exc()
+            return event
+
     def unregister_hotkey(self):
         """Unregister the hot key."""
         if not self._is_registered:
             return
 
         try:
-            if self._event_monitor:
-                AppKit.NSEvent.removeMonitor_(self._event_monitor)
-                self._event_monitor = None
+            if self._tap:
+                CGEventTapEnable(self._tap, False)
 
-            self._event_handler = None
+            if self._run_loop:
+                CoreFoundation.CFRunLoopStop(self._run_loop)
+
+            if self._tap_thread:
+                self._tap_thread.join(timeout=2.0)
+
+            self._tap = None
+            self._tap_callback = None
+            self._run_loop_source = None
+            self._run_loop = None
+            self._tap_thread = None
             self._is_registered = False
             print("Hot key unregistered")
 

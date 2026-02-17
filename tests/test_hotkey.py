@@ -9,6 +9,17 @@ from vox.hotkey import (
     request_accessibility_permission,
     create_hotkey_manager,
     KEY_CODES,
+    MODIFIER_FLAGS,
+    ALL_MODIFIER_FLAGS_MASK,
+    kCGEventFlagMaskCommand,
+    kCGEventFlagMaskAlternate,
+    kCGEventFlagMaskControl,
+    kCGEventFlagMaskShift,
+    kCGEventKeyDown,
+    kCGEventTapDisabledByTimeout,
+    kCGEventTapDisabledByUserInput,
+    kCGKeyboardEventKeycode,
+    kCGKeyboardEventAutorepeat,
 )
 
 
@@ -62,146 +73,90 @@ class TestParseModifiers:
 
     def test_parse_single_modifier_cmd(self):
         """Test parsing single cmd modifier."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('cmd')
-            assert result == 0x100000
+        result = parse_modifiers('cmd')
+        assert result == kCGEventFlagMaskCommand
 
     def test_parse_single_modifier_command(self):
         """Test parsing single command modifier (alias for cmd)."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('command')
-            assert result == 0x100000
+        result = parse_modifiers('command')
+        assert result == kCGEventFlagMaskCommand
 
     def test_parse_single_modifier_option(self):
         """Test parsing single option modifier."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('option')
-            assert result == 0x80000
+        result = parse_modifiers('option')
+        assert result == kCGEventFlagMaskAlternate
 
     def test_parse_single_modifier_opt(self):
         """Test parsing single opt modifier (alias for option)."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('opt')
-            assert result == 0x80000
+        result = parse_modifiers('opt')
+        assert result == kCGEventFlagMaskAlternate
 
     def test_parse_single_modifier_alt(self):
         """Test parsing single alt modifier (alias for option)."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('alt')
-            assert result == 0x80000
+        result = parse_modifiers('alt')
+        assert result == kCGEventFlagMaskAlternate
 
     def test_parse_single_modifier_control(self):
         """Test parsing single control modifier."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('control')
-            assert result == 0x40000
+        result = parse_modifiers('control')
+        assert result == kCGEventFlagMaskControl
 
     def test_parse_single_modifier_ctrl(self):
         """Test parsing single ctrl modifier (alias for control)."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('ctrl')
-            assert result == 0x40000
+        result = parse_modifiers('ctrl')
+        assert result == kCGEventFlagMaskControl
 
     def test_parse_single_modifier_shift(self):
         """Test parsing single shift modifier."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('shift')
-            assert result == 0x20000
+        result = parse_modifiers('shift')
+        assert result == kCGEventFlagMaskShift
 
     def test_parse_combined_modifiers_with_plus(self):
         """Test parsing combined modifiers with + separator."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('cmd+shift')
-            assert result == (0x100000 | 0x20000)
+        result = parse_modifiers('cmd+shift')
+        assert result == (kCGEventFlagMaskCommand | kCGEventFlagMaskShift)
 
     def test_parse_combined_modifiers_with_space(self):
         """Test parsing combined modifiers with space separator."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('cmd shift')
-            assert result == (0x100000 | 0x20000)
+        result = parse_modifiers('cmd shift')
+        assert result == (kCGEventFlagMaskCommand | kCGEventFlagMaskShift)
 
     def test_parse_combined_modifiers_mixed_separator(self):
         """Test parsing combined modifiers with mixed separators."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('cmd+shift control')
-            assert result == (0x100000 | 0x20000 | 0x40000)
+        result = parse_modifiers('cmd+shift control')
+        assert result == (kCGEventFlagMaskCommand | kCGEventFlagMaskShift | kCGEventFlagMaskControl)
 
     def test_parse_modifiers_case_insensitive(self):
         """Test that modifier parsing is case insensitive."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
-
-            result = parse_modifiers('CMD+SHIFT')
-            assert result == (0x100000 | 0x20000)
+        result = parse_modifiers('CMD+SHIFT')
+        assert result == (kCGEventFlagMaskCommand | kCGEventFlagMaskShift)
 
     def test_parse_empty_modifiers(self):
         """Test parsing empty string returns 0."""
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventModifierFlagCommand = 0x100000
-            mock_appkit.NSEventModifierFlagOption = 0x80000
-            mock_appkit.NSEventModifierFlagControl = 0x40000
-            mock_appkit.NSEventModifierFlagShift = 0x20000
+        result = parse_modifiers('')
+        assert result == 0
 
-            result = parse_modifiers('')
-            assert result == 0
+
+class TestModifierFlagsMapping:
+    """Tests for MODIFIER_FLAGS constant and ALL_MODIFIER_FLAGS_MASK."""
+
+    def test_modifier_flags_contains_all_aliases(self):
+        """Test that MODIFIER_FLAGS covers all known aliases."""
+        assert 'cmd' in MODIFIER_FLAGS
+        assert 'command' in MODIFIER_FLAGS
+        assert 'option' in MODIFIER_FLAGS
+        assert 'opt' in MODIFIER_FLAGS
+        assert 'alt' in MODIFIER_FLAGS
+        assert 'control' in MODIFIER_FLAGS
+        assert 'ctrl' in MODIFIER_FLAGS
+        assert 'shift' in MODIFIER_FLAGS
+
+    def test_all_modifier_flags_mask(self):
+        """Test that ALL_MODIFIER_FLAGS_MASK includes all four modifier bits."""
+        assert ALL_MODIFIER_FLAGS_MASK & kCGEventFlagMaskCommand
+        assert ALL_MODIFIER_FLAGS_MASK & kCGEventFlagMaskAlternate
+        assert ALL_MODIFIER_FLAGS_MASK & kCGEventFlagMaskControl
+        assert ALL_MODIFIER_FLAGS_MASK & kCGEventFlagMaskShift
 
 
 class TestAccessibilityPermission:
@@ -245,14 +200,17 @@ class TestHotKeyManager:
         """Test HotKeyManager initialization with default values."""
         manager = HotKeyManager()
         assert manager._callback is None
-        assert manager._event_monitor is None
-        assert manager._event_handler is None
         assert manager._enabled is True
         assert manager._modifiers_str == "option"
         assert manager._key_str == "v"
         assert manager._target_key_code == 0
         assert manager._target_modifiers == 0
         assert manager._is_registered is False
+        assert manager._tap is None
+        assert manager._tap_callback is None
+        assert manager._run_loop_source is None
+        assert manager._run_loop is None
+        assert manager._tap_thread is None
 
     def test_set_callback(self):
         """Test setting the callback function."""
@@ -296,13 +254,20 @@ class TestHotKeyManager:
         """Test unregistering the hot key when registered."""
         manager = HotKeyManager()
         manager._is_registered = True
-        manager._event_monitor = MagicMock()
+        manager._tap = MagicMock()
+        manager._run_loop = MagicMock()
+        manager._tap_thread = MagicMock()
 
-        with patch('vox.hotkey.AppKit') as mock_appkit:
+        with patch('vox.hotkey.CGEventTapEnable') as mock_tap_enable, \
+             patch('vox.hotkey.CoreFoundation') as mock_cf:
             manager.unregister_hotkey()
-            mock_appkit.NSEvent.removeMonitor_.assert_called_once()
-            assert manager._event_monitor is None
-            assert manager._event_handler is None
+            mock_tap_enable.assert_called_once()
+            mock_cf.CFRunLoopStop.assert_called_once()
+            assert manager._tap is None
+            assert manager._tap_callback is None
+            assert manager._run_loop_source is None
+            assert manager._run_loop is None
+            assert manager._tap_thread is None
             assert manager._is_registered is False
 
     def test_unregister_hotkey_when_not_registered(self):
@@ -316,11 +281,11 @@ class TestHotKeyManager:
         """Test unregister_hotkey handles exceptions gracefully."""
         manager = HotKeyManager()
         manager._is_registered = True
-        manager._event_monitor = MagicMock()
-        manager._event_handler = MagicMock()
+        manager._tap = MagicMock()
+        manager._run_loop = MagicMock()
+        manager._tap_thread = MagicMock()
 
-        with patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEvent.removeMonitor_.side_effect = Exception("Test error")
+        with patch('vox.hotkey.CGEventTapEnable', side_effect=Exception("Test error")):
             # Should not raise, just print error
             manager.unregister_hotkey()
 
@@ -362,55 +327,186 @@ class TestHotKeyManager:
             assert result is False
 
     def test_register_hotkey_success(self):
-        """Test successful hot key registration."""
+        """Test successful hot key registration via CGEventTap."""
         manager = HotKeyManager()
         manager._enabled = True
-        manager.set_hotkey('cmd', 'v')
+        manager.set_hotkey('cmd', 'd')
+
+        mock_tap = MagicMock()
+        mock_rls = MagicMock()
 
         with patch('vox.hotkey.has_accessibility_permission', return_value=True), \
-             patch('vox.hotkey.get_key_code', return_value=0x09), \
-             patch('vox.hotkey.parse_modifiers', return_value=0x100000), \
-             patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventMaskKeyDown = 0xA
-            mock_appkit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_.return_value = MagicMock()
+             patch('vox.hotkey.CGEventTapCreate', return_value=mock_tap), \
+             patch('vox.hotkey.CGEventMaskBit', return_value=0x400), \
+             patch('vox.hotkey.CoreFoundation') as mock_cf, \
+             patch('vox.hotkey.threading') as mock_threading:
+            mock_cf.CFMachPortCreateRunLoopSource.return_value = mock_rls
+            mock_thread = MagicMock()
+            mock_threading.Thread.return_value = mock_thread
 
             result = manager.register_hotkey()
             assert result is True
             assert manager._is_registered is True
+            assert manager._tap is mock_tap
+            assert manager._run_loop_source is mock_rls
+            mock_thread.start.assert_called_once()
 
-    def test_register_hotkey_monitor_creation_fails(self):
-        """Test hot key registration when monitor creation fails."""
+    def test_register_hotkey_tap_creation_fails(self):
+        """Test hot key registration when CGEventTapCreate returns None."""
         manager = HotKeyManager()
         manager._enabled = True
 
         with patch('vox.hotkey.has_accessibility_permission', return_value=True), \
-             patch('vox.hotkey.get_key_code', return_value=0x09), \
-             patch('vox.hotkey.parse_modifiers', return_value=0x80000), \
-             patch('vox.hotkey.AppKit') as mock_appkit, \
+             patch('vox.hotkey.CGEventTapCreate', return_value=None), \
+             patch('vox.hotkey.CGEventMaskBit', return_value=0x400), \
              patch.object(manager, '_show_accessibility_dialog') as mock_dialog:
-            mock_appkit.NSEventMaskKeyDown = 0xA
-            mock_appkit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_.return_value = None
-
             result = manager.register_hotkey()
             assert result is False
             mock_dialog.assert_called_once()
 
     def test_register_hotkey_exception_handling(self):
-        """Test register_hotkey handles exceptions gracefully during event monitor setup."""
+        """Test register_hotkey handles exceptions gracefully."""
         manager = HotKeyManager()
         manager._enabled = True
 
         with patch('vox.hotkey.has_accessibility_permission', return_value=True), \
-             patch('vox.hotkey.get_key_code', return_value=0x09), \
-             patch('vox.hotkey.parse_modifiers', return_value=0x80000), \
-             patch('vox.hotkey.AppKit') as mock_appkit:
-            mock_appkit.NSEventMaskKeyDown = 0xA
-            # Make addGlobalMonitorForEventsMatchingMask_handler_ raise an exception
-            mock_appkit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_.side_effect = Exception("Monitor error")
-
+             patch('vox.hotkey.CGEventTapCreate', side_effect=Exception("Tap error")), \
+             patch('vox.hotkey.CGEventMaskBit', return_value=0x400):
             result = manager.register_hotkey()
-            # Should catch exception and return False
             assert result is False
+
+
+class TestHandleCGEvent:
+    """Tests for _handle_cg_event method."""
+
+    def _make_manager(self):
+        manager = HotKeyManager()
+        manager._target_key_code = 0x02  # D
+        manager._target_modifiers = kCGEventFlagMaskCommand
+        manager._enabled = True
+        manager._callback = MagicMock()
+        manager._tap = MagicMock()
+        return manager
+
+    def test_handle_disabled_by_timeout_reenables(self):
+        """Test that kCGEventTapDisabledByTimeout re-enables the tap."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+
+        with patch('vox.hotkey.CGEventTapEnable') as mock_enable:
+            result = manager._handle_cg_event(None, kCGEventTapDisabledByTimeout, mock_event)
+            mock_enable.assert_called_once_with(manager._tap, True)
+            assert result is mock_event
+
+    def test_handle_disabled_by_user_input_passes_through(self):
+        """Test that kCGEventTapDisabledByUserInput passes event through."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+        result = manager._handle_cg_event(None, kCGEventTapDisabledByUserInput, mock_event)
+        assert result is mock_event
+
+    def test_handle_non_keydown_passes_through(self):
+        """Test that non-keydown events pass through."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+        result = manager._handle_cg_event(None, 999, mock_event)
+        assert result is mock_event
+        manager._callback.assert_not_called()
+
+    def test_handle_wrong_keycode_passes_through(self):
+        """Test that wrong key code passes through."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+
+        with patch('vox.hotkey.CGEventGetIntegerValueField', return_value=0x09):  # V, not D
+            result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
+            assert result is mock_event
+            manager._callback.assert_not_called()
+
+    def test_handle_autorepeat_passes_through(self):
+        """Test that key repeat events pass through."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+
+        def mock_get_field(event, field):
+            if field == kCGKeyboardEventKeycode:
+                return 0x02  # D
+            if field == kCGKeyboardEventAutorepeat:
+                return 1
+            return 0
+
+        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field):
+            result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
+            assert result is mock_event
+            manager._callback.assert_not_called()
+
+    def test_handle_wrong_modifiers_passes_through(self):
+        """Test that wrong modifier flags pass through."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+
+        def mock_get_field(event, field):
+            if field == kCGKeyboardEventKeycode:
+                return 0x02  # D
+            if field == kCGKeyboardEventAutorepeat:
+                return 0
+            return 0
+
+        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field), \
+             patch('vox.hotkey.CGEventGetFlags', return_value=kCGEventFlagMaskAlternate):  # Option, not Cmd
+            result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
+            assert result is mock_event
+            manager._callback.assert_not_called()
+
+    def test_handle_matching_hotkey_dispatches_callback(self):
+        """Test that matching hotkey dispatches callback to main thread."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+
+        def mock_get_field(event, field):
+            if field == kCGKeyboardEventKeycode:
+                return 0x02  # D
+            if field == kCGKeyboardEventAutorepeat:
+                return 0
+            return 0
+
+        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field), \
+             patch('vox.hotkey.CGEventGetFlags', return_value=kCGEventFlagMaskCommand), \
+             patch('vox.hotkey.AppKit') as mock_appkit:
+            mock_queue = MagicMock()
+            mock_appkit.NSOperationQueue.mainQueue.return_value = mock_queue
+
+            result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
+            assert result is mock_event
+            mock_queue.addOperationWithBlock_.assert_called_once_with(manager._callback)
+
+    def test_handle_disabled_manager_does_not_dispatch(self):
+        """Test that disabled manager does not dispatch callback."""
+        manager = self._make_manager()
+        manager._enabled = False
+        mock_event = MagicMock()
+
+        def mock_get_field(event, field):
+            if field == kCGKeyboardEventKeycode:
+                return 0x02
+            if field == kCGKeyboardEventAutorepeat:
+                return 0
+            return 0
+
+        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=mock_get_field), \
+             patch('vox.hotkey.CGEventGetFlags', return_value=kCGEventFlagMaskCommand):
+            result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
+            assert result is mock_event
+            manager._callback.assert_not_called()
+
+    def test_handle_exception_returns_event(self):
+        """Test that exceptions in callback return event to avoid breaking event stream."""
+        manager = self._make_manager()
+        mock_event = MagicMock()
+
+        with patch('vox.hotkey.CGEventGetIntegerValueField', side_effect=Exception("boom")):
+            result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
+            assert result is mock_event
 
 
 class TestShowAccessibilityDialog:
