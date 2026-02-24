@@ -8,6 +8,8 @@ import yaml
 from pathlib import Path
 from typing import Optional
 
+from vox.keychain import KeychainManager, KeychainError
+
 
 # Default configuration values
 DEFAULT_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
@@ -327,6 +329,59 @@ class Config:
         """Check if an API key is configured."""
         key = self.get_api_key()
         return key is not None and len(key) > 0
+
+    # API Key Management via Keychain (new secure storage)
+
+    def get_api_key_from_keychain(self) -> Optional[str]:
+        """Retrieve the OpenAI API key from keychain.
+
+        Returns:
+            The API key string if found in keychain, None otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.get_password()
+        except KeychainError:
+            return None
+
+    def set_api_key_in_keychain(self, api_key: str) -> bool:
+        """Store the OpenAI API key in keychain.
+
+        Args:
+            api_key: The API key string to store.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.set_password(api_key)
+        except KeychainError:
+            return False
+
+    def delete_api_key_from_keychain(self) -> bool:
+        """Delete the OpenAI API key from keychain.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.delete_password()
+        except KeychainError:
+            return False
+
+    def has_api_key_in_keychain(self) -> bool:
+        """Check if an API key exists in keychain.
+
+        Returns:
+            True if a key exists in keychain, False otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.has_password()
+        except KeychainError:
+            return False
 
     # Auto-start Launch Agent management
 
