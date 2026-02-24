@@ -349,8 +349,7 @@ class Config:
 
     def has_api_key(self) -> bool:
         """Check if an API key is configured."""
-        key = self.get_api_key()
-        return key is not None and len(key) > 0
+        return self.has_api_key_in_keychain()
 
     # API Key Management via Keychain (new secure storage)
 
