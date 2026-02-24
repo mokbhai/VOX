@@ -204,7 +204,7 @@ class TestConfigThinkingMode:
 
 
 class TestConfigApiKey:
-    """Tests for API key management via config file."""
+    """Tests for API key management via keychain."""
 
     @pytest.fixture
     def temp_config(self):
@@ -215,52 +215,287 @@ class TestConfigApiKey:
                 config = Config()
                 yield config
 
-    def test_get_api_key_when_not_set(self, temp_config):
+    @pytest.fixture
+    def mock_keychain(self):
+        """Create a mock KeychainManager."""
+        mock = MagicMock()
+        mock.get_password.return_value = None
+        mock.set_password.return_value = True
+        mock.delete_password.return_value = True
+        mock.has_password.return_value = False
+        return mock
+
+    def test_get_api_key_when_not_set(self, temp_config, mock_keychain):
         """Test getting API key when none is stored."""
-        assert temp_config.get_api_key() is None
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            assert temp_config.get_api_key() is None
+            mock_keychain.get_password.assert_called_once()
 
-    def test_get_api_key_when_set(self, temp_config):
-        """Test getting API key when one is stored."""
-        temp_config.set_api_key("sk-test123")
-        assert temp_config.get_api_key() == "sk-test123"
+    def test_get_api_key_when_set(self, temp_config, mock_keychain):
+        """Test getting API key when one is stored in keychain."""
+        mock_keychain.get_password.return_value = "sk-test123"
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            assert temp_config.get_api_key() == "sk-test123"
+            mock_keychain.get_password.assert_called_once()
 
-    def test_set_api_key(self, temp_config):
-        """Test setting API key."""
-        result = temp_config.set_api_key("sk-newkey")
-        assert result is True
+    def test_set_api_key(self, temp_config, mock_keychain):
+        """Test setting API key stores in keychain."""
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            result = temp_config.set_api_key("sk-newkey")
+            assert result is True
+            mock_keychain.set_password.assert_called_once_with("sk-newkey")
 
-        # Verify it's persisted
-        with open(temp_config.config_file, "r") as f:
-            data = yaml.safe_load(f)
-        assert data["api_key"] == "sk-newkey"
+    def test_delete_api_key(self, temp_config, mock_keychain):
+        """Test deleting API key from keychain."""
+        mock_keychain.has_password.return_value = True
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            temp_config.set_api_key("sk-test")
+            assert temp_config.has_api_key() is True
 
-    def test_delete_api_key(self, temp_config):
-        """Test deleting API key."""
-        temp_config.set_api_key("sk-test")
-        assert temp_config.has_api_key() is True
+            mock_keychain.reset_mock()
+            mock_keychain.delete_password.return_value = True
+            mock_keychain.has_password.return_value = False
 
-        result = temp_config.delete_api_key()
-        assert result is True
-        assert temp_config.get_api_key() is None
+            result = temp_config.delete_api_key()
+            assert result is True
+            mock_keychain.delete_password.assert_called_once()
 
-    def test_delete_api_key_when_not_set(self, temp_config):
+    def test_delete_api_key_when_not_set(self, temp_config, mock_keychain):
         """Test deleting API key when none exists."""
-        result = temp_config.delete_api_key()
-        assert result is True  # Should succeed even if key doesn't exist
+        mock_keychain.delete_password.return_value = True
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            result = temp_config.delete_api_key()
+            assert result is True  # Should succeed even if key doesn't exist
+            mock_keychain.delete_password.assert_called_once()
 
-    def test_has_api_key_true(self, temp_config):
-        """Test has_api_key returns True when key exists."""
-        temp_config.set_api_key("sk-test")
-        assert temp_config.has_api_key() is True
+    def test_has_api_key_true(self, temp_config, mock_keychain):
+        """Test has_api_key returns True when key exists in keychain."""
+        mock_keychain.has_password.return_value = True
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            assert temp_config.has_api_key() is True
+            mock_keychain.has_password.assert_called_once()
 
-    def test_has_api_key_false(self, temp_config):
-        """Test has_api_key returns False when key doesn't exist."""
-        assert temp_config.has_api_key() is False
+    def test_has_api_key_false(self, temp_config, mock_keychain):
+        """Test has_api_key returns False when key doesn't exist in keychain."""
+        mock_keychain.has_password.return_value = False
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            assert temp_config.has_api_key() is False
+            mock_keychain.has_password.assert_called_once()
 
-    def test_has_api_key_empty_string(self, temp_config):
-        """Test has_api_key returns False for empty string."""
-        temp_config.set_api_key("")
-        assert temp_config.has_api_key() is False
+    def test_has_api_key_empty_string(self, temp_config, mock_keychain):
+        """Test has_api_key returns False for empty string (keychain deletes)."""
+        # Setting empty string should store empty string (keychain handles delete internally)
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            temp_config.set_api_key("")
+            # set_password is called with empty string
+            mock_keychain.set_password.assert_called_once_with("")
+            # has_password should return False for empty password
+            mock_keychain.has_password.return_value = False
+            assert temp_config.has_api_key() is False
+
+    def test_get_api_key_migrates_from_config(self, temp_config, mock_keychain):
+        """Test get_api_key migrates key from config file to keychain."""
+        # Mock keychain to initially return None, then accept the migrated key
+        mock_keychain.get_password.return_value = None
+        mock_keychain.set_password.return_value = True
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write API key to config file (old format) AFTER mocking
+            config_data = {"api_key": "sk-old-config-key"}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            # Reload config to pick up the file
+            temp_config.load()
+
+            # First call should migrate from config to keychain
+            key = temp_config.get_api_key()
+            assert key == "sk-old-config-key"
+            mock_keychain.set_password.assert_called_once_with("sk-old-config-key")
+
+            # Verify the key was removed from config file
+            temp_config.load()
+            assert "api_key" not in temp_config._config
+
+    def test_get_api_key_returns_keychain_priority_over_config(self, temp_config, mock_keychain):
+        """Test get_api_key returns keychain key even if config has one."""
+        # Mock keychain to return a different key
+        mock_keychain.get_password.return_value = "sk-keychain-key"
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write API key to config file
+            config_data = {"api_key": "sk-config-key"}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            # Reload config to pick up the file
+            temp_config.load()
+
+            # Should return keychain key, not config key
+            key = temp_config.get_api_key()
+            assert key == "sk-keychain-key"
+            # Should not migrate config key since keychain has one
+            mock_keychain.set_password.assert_not_called()
+
+    def test_migration_handles_keychain_errors(self, temp_config, mock_keychain):
+        """Test migration handles keychain errors gracefully."""
+        # Mock keychain to raise error on set
+        mock_keychain.get_password.return_value = None
+        mock_keychain.set_password.side_effect = Exception("Keychain error")
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write API key to config file
+            config_data = {"api_key": "sk-config-key"}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            # Reload config to pick up the file
+            temp_config.load()
+
+            # Should still return the config key even if migration fails
+            key = temp_config.get_api_key()
+            assert key == "sk-config-key"
+
+
+class TestConfigApiKeyMigration:
+    """Tests for API key migration from config file to keychain."""
+
+    @pytest.fixture
+    def temp_config(self):
+        """Create a config instance for migration tests."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("vox.config.Path.home", return_value=Path(tmpdir)):
+                reset_config()
+                config = Config()
+                yield config
+
+    @pytest.fixture
+    def mock_keychain(self):
+        """Create a mock KeychainManager."""
+        mock = MagicMock()
+        mock.get_password.return_value = None
+        mock.set_password.return_value = True
+        mock.delete_password.return_value = True
+        mock.has_password.return_value = False
+        return mock
+
+    def test_migration_from_config_to_keychain(self, temp_config, mock_keychain):
+        """Test API key is migrated from config file to keychain on first access."""
+        # Mock keychain to initially return None, then accept the migrated key
+        mock_keychain.get_password.return_value = None
+        mock_keychain.set_password.return_value = True
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write API key to config file (old format)
+            config_data = {"api_key": "sk-old-config-key"}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            # Reload config to pick up the file
+            temp_config.load()
+
+            # First call should migrate from config to keychain
+            key = temp_config.get_api_key()
+            assert key == "sk-old-config-key"
+            mock_keychain.set_password.assert_called_once_with("sk-old-config-key")
+
+            # Verify the key was removed from config file after migration
+            temp_config.load()
+            assert "api_key" not in temp_config._config
+
+            # Verify config file no longer contains api_key
+            with open(temp_config.config_file, "r") as f:
+                data = yaml.safe_load(f)
+            assert "api_key" not in data
+
+    def test_migration_skipped_when_keychain_has_key(self, temp_config, mock_keychain):
+        """Test migration is skipped when key already exists in keychain."""
+        # Mock keychain to return a key
+        mock_keychain.get_password.return_value = "sk-keychain-key"
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write API key to config file
+            config_data = {"api_key": "sk-config-key"}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            # Reload config to pick up the file
+            temp_config.load()
+
+            # Should return keychain key, not migrate config key
+            key = temp_config.get_api_key()
+            assert key == "sk-keychain-key"
+            # Should not attempt migration since keychain has one
+            mock_keychain.set_password.assert_not_called()
+
+    def test_migration_handles_keychain_errors_gracefully(self, temp_config, mock_keychain):
+        """Test migration returns config key if keychain storage fails."""
+        # Mock keychain to raise error on set
+        mock_keychain.get_password.return_value = None
+        mock_keychain.set_password.side_effect = Exception("Keychain error")
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write API key to config file
+            config_data = {"api_key": "sk-config-key"}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            # Reload config to pick up the file
+            temp_config.load()
+
+            # Should still return the config key even if migration fails
+            key = temp_config.get_api_key()
+            assert key == "sk-config-key"
+            mock_keychain.set_password.assert_called_once()
+
+    def test_migration_idempotent(self, temp_config, mock_keychain):
+        """Test subsequent calls after migration don't trigger migration again."""
+        # First call: migrate from config
+        mock_keychain.get_password.return_value = None
+        mock_keychain.set_password.return_value = True
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write API key to config file
+            config_data = {"api_key": "sk-old-key"}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            temp_config.load()
+
+            # First call migrates
+            key1 = temp_config.get_api_key()
+            assert key1 == "sk-old-key"
+            assert mock_keychain.set_password.call_count == 1
+
+            # Reset mock to verify no further migration attempts
+            mock_keychain.reset_mock()
+            mock_keychain.get_password.return_value = "sk-old-key"
+
+            # Second call uses keychain
+            key2 = temp_config.get_api_key()
+            assert key2 == "sk-old-key"
+            # Should not call set_password again
+            mock_keychain.set_password.assert_not_called()
+            # Should call get_password to check keychain
+            mock_keychain.get_password.assert_called_once()
+
+    def test_migration_with_empty_config_key(self, temp_config, mock_keychain):
+        """Test migration handles empty string in config file."""
+        mock_keychain.get_password.return_value = None
+
+        with patch("vox.config.KeychainManager", return_value=mock_keychain):
+            # Write empty API key to config file
+            config_data = {"api_key": ""}
+            with open(temp_config.config_file, "w") as f:
+                yaml.dump(config_data, f)
+
+            temp_config.load()
+
+            # Should return None for empty string
+            key = temp_config.get_api_key()
+            assert key is None
+            # Should not attempt to store empty string
+            mock_keychain.set_password.assert_not_called()
 
 
 class TestConfigHotkey:

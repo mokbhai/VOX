@@ -8,6 +8,8 @@ import yaml
 from pathlib import Path
 from typing import Optional
 
+from vox.keychain import KeychainManager, KeychainError
+
 
 # Default configuration values
 DEFAULT_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
@@ -88,7 +90,7 @@ class Config:
                     self._config.update(user_config)
                     self.save()
                 else:
-                    # Clean up any leftover old keys
+                    # Clean up any leftover old keys (but keep api_key for migration)
                     for old_key in ("hotkey_enabled", "hotkey_modifiers", "hotkey_key"):
                         user_config.pop(old_key, None)
 
@@ -107,8 +109,10 @@ class Config:
     def save(self):
         """Save current configuration to file."""
         try:
+            # Create a copy of config without api_key to prevent plaintext storage
+            config_to_save = {k: v for k, v in self._config.items() if k != "api_key"}
             with open(self.config_file, "w") as f:
-                yaml.dump(self._config, f, default_flow_style=False)
+                yaml.dump(config_to_save, f, default_flow_style=False)
         except Exception as e:
             print(f"Error saving config: {e}")
 
@@ -305,28 +309,104 @@ class Config:
         }
         self.save()
 
-    # API Key Management via config file
+    # API Key Management via keychain (with migration from config file)
 
     def get_api_key(self) -> Optional[str]:
-        """Retrieve the OpenAI API key from config."""
-        return self._config.get("api_key")
+        """Retrieve the OpenAI API key from keychain.
+
+        Checks keychain first. If no key exists in keychain, falls back to
+        config file for migration and automatically migrates the key to keychain.
+
+        Returns:
+            The API key string if found, None otherwise.
+        """
+        # First check keychain
+        keychain_key = self.get_api_key_from_keychain()
+        if keychain_key:
+            return keychain_key
+
+        # Fall back to config file for migration
+        config_key = self._config.get("api_key")
+        if config_key:
+            # Migrate the key to keychain
+            try:
+                if self.set_api_key_in_keychain(config_key):
+                    # Remove from config file after successful migration
+                    self._config.pop("api_key", None)
+                    self.save()
+            except Exception:
+                # If migration fails, just log and continue (key stays in config)
+                pass
+
+            # Always return the config key, even if migration failed
+            return config_key
+
+        return None
 
     def set_api_key(self, api_key: str) -> bool:
-        """Store the OpenAI API key in config."""
-        self._config["api_key"] = api_key
-        self.save()
-        return True
+        """Store the OpenAI API key in keychain."""
+        return self.set_api_key_in_keychain(api_key)
 
     def delete_api_key(self) -> bool:
-        """Delete the OpenAI API key from config."""
-        self._config.pop("api_key", None)
-        self.save()
-        return True
+        """Delete the OpenAI API key from keychain."""
+        return self.delete_api_key_from_keychain()
 
     def has_api_key(self) -> bool:
         """Check if an API key is configured."""
-        key = self.get_api_key()
-        return key is not None and len(key) > 0
+        return self.has_api_key_in_keychain()
+
+    # API Key Management via Keychain (new secure storage)
+
+    def get_api_key_from_keychain(self) -> Optional[str]:
+        """Retrieve the OpenAI API key from keychain.
+
+        Returns:
+            The API key string if found in keychain, None otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.get_password()
+        except KeychainError:
+            return None
+
+    def set_api_key_in_keychain(self, api_key: str) -> bool:
+        """Store the OpenAI API key in keychain.
+
+        Args:
+            api_key: The API key string to store.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.set_password(api_key)
+        except KeychainError:
+            return False
+
+    def delete_api_key_from_keychain(self) -> bool:
+        """Delete the OpenAI API key from keychain.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.delete_password()
+        except KeychainError:
+            return False
+
+    def has_api_key_in_keychain(self) -> bool:
+        """Check if an API key exists in keychain.
+
+        Returns:
+            True if a key exists in keychain, False otherwise.
+        """
+        try:
+            keychain = KeychainManager()
+            return keychain.has_password()
+        except KeychainError:
+            return False
 
     # Auto-start Launch Agent management
 

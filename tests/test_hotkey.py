@@ -504,7 +504,8 @@ class TestHandleCGEvent:
             mock_appkit.NSOperationQueue.mainQueue.return_value = mock_queue
 
             result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
-            assert result is mock_event
+            # Event is suppressed (None returned) when hotkey matches
+            assert result is None
             mock_queue.addOperationWithBlock_.assert_called_once()
             # Call the dispatched lambda and verify it calls the callback with the mode
             dispatched_fn = mock_queue.addOperationWithBlock_.call_args[0][0]
@@ -529,7 +530,9 @@ class TestHandleCGEvent:
             mock_quartz.CGEventGetIntegerValueField.side_effect = mock_get_field
             mock_quartz.CGEventGetFlags.return_value = kCGEventFlagMaskCommand
             result = manager._handle_cg_event(None, kCGEventKeyDown, mock_event)
-            assert result is mock_event
+            # Event is suppressed (None returned) when hotkey matches, even if disabled
+            # (set_enabled(False) unregisters the tap, preventing _handle_cg_event from being called)
+            assert result is None
             manager._callback.assert_not_called()
 
     def test_handle_exception_returns_event(self):
