@@ -334,10 +334,12 @@ class Config:
                     # Remove from config file after successful migration
                     self._config.pop("api_key", None)
                     self.save()
-                    return config_key
             except Exception:
-                # If migration fails, still return the key from config
-                return config_key
+                # If migration fails, just log and continue (key stays in config)
+                pass
+
+            # Always return the config key, even if migration failed
+            return config_key
 
         return None
 
