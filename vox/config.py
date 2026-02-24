@@ -335,7 +335,7 @@ class Config:
                     return config_key
             except Exception:
                 # If migration fails, still return the key from config
-                pass
+                return config_key
 
         return None
 
