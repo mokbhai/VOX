@@ -90,8 +90,8 @@ class Config:
                     self._config.update(user_config)
                     self.save()
                 else:
-                    # Clean up any leftover old keys (including api_key for security)
-                    for old_key in ("hotkey_enabled", "hotkey_modifiers", "hotkey_key", "api_key"):
+                    # Clean up any leftover old keys (but keep api_key for migration)
+                    for old_key in ("hotkey_enabled", "hotkey_modifiers", "hotkey_key"):
                         user_config.pop(old_key, None)
 
                     # Merge hotkeys dict carefully (keep defaults for missing modes)
